@@ -19,9 +19,16 @@ const queryClient = new QueryClient({
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
+function AppWrapper({ children }: { children: React.ReactNode }) {
+  if (googleClientId) {
+    return <GoogleOAuthProvider clientId={googleClientId}>{children}</GoogleOAuthProvider>;
+  }
+  return <>{children}</>;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <GoogleOAuthProvider clientId={googleClientId}>
+    <AppWrapper>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />
@@ -38,6 +45,6 @@ createRoot(document.getElementById('root')!).render(
           />
         </BrowserRouter>
       </QueryClientProvider>
-    </GoogleOAuthProvider>
+    </AppWrapper>
   </StrictMode>
 );
