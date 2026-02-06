@@ -10,8 +10,8 @@ export const authApi = {
     return api.post('/api/v1/auth/login', { email, password });
   },
 
-  googleLogin(code: string): Promise<AuthResponse> {
-    return api.post('/api/v1/auth/google', { code });
+  googleLogin(accessToken: string): Promise<AuthResponse> {
+    return api.post('/api/v1/auth/google', { access_token: accessToken });
   },
 
   refresh(refreshToken: string): Promise<TokenPair> {

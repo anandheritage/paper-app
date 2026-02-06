@@ -42,10 +42,10 @@ export default function Register() {
     }
   };
 
-  const handleGoogleSuccess = async (code: string) => {
+  const handleGoogleSuccess = async (accessToken: string) => {
     setLoading(true);
     try {
-      const res = await authApi.googleLogin(code);
+      const res = await authApi.googleLogin(accessToken);
       if (res?.user && res?.tokens) {
         setAuth(res.user, res.tokens);
         toast.success('Welcome!');

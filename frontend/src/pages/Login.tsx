@@ -36,10 +36,16 @@ export default function Login() {
     }
   };
 
-  const handleGoogleSuccess = async (code: string) => {
+  const handleGoogleSuccess = async (accessToken: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/8d1a3c41-fcb2-4ddc-ae90-28fa3d3a7afb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Login.tsx:handleGoogleSuccess',message:'called with access_token',data:{tokenLength:accessToken?.length??0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     setLoading(true);
     try {
-      const res = await authApi.googleLogin(code);
+      const res = await authApi.googleLogin(accessToken);
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/8d1a3c41-fcb2-4ddc-ae90-28fa3d3a7afb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Login.tsx:handleGoogleSuccess',message:'API response received',data:{hasUser:!!res?.user,hasTokens:!!res?.tokens,userEmail:res?.user?.email??'NONE'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       if (res?.user && res?.tokens) {
         setAuth(res.user, res.tokens);
         toast.success('Welcome!');
@@ -48,6 +54,9 @@ export default function Login() {
         toast.error('Unexpected response from server');
       }
     } catch (err: unknown) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/8d1a3c41-fcb2-4ddc-ae90-28fa3d3a7afb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Login.tsx:handleGoogleSuccess:CATCH',message:'API call failed',data:{errorMsg:(err instanceof Error?err.message:'unknown'),errorName:(err instanceof Error?err.name:'unknown')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
       const message = err instanceof Error ? err.message : 'Google login failed';
       toast.error(message);
     } finally {
