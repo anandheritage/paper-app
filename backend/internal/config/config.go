@@ -43,7 +43,7 @@ type CORSConfig struct {
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port:         getEnv("SERVER_PORT", "8080"),
+			Port:         getEnvMulti([]string{"PORT", "SERVER_PORT"}, "8080"),
 			ReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 15*time.Second),
 			WriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 15*time.Second),
 		},
@@ -63,6 +63,15 @@ func Load() *Config {
 			AllowedOrigins: getSliceEnv("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		},
 	}
+}
+
+func getEnvMulti(keys []string, defaultValue string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
+	}
+	return defaultValue
 }
 
 func getEnv(key, defaultValue string) string {

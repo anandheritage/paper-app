@@ -25,20 +25,31 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Connect to PostgreSQL
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := pgxpool.New(ctx, cfg.Database.URL)
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+	// Connect to PostgreSQL with retry
+	var pool *pgxpool.Pool
+	for attempt := 1; attempt <= 5; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var err error
+		pool, err = pgxpool.New(ctx, cfg.Database.URL)
+		if err == nil {
+			if pingErr := pool.Ping(ctx); pingErr == nil {
+				cancel()
+				log.Println("Connected to PostgreSQL")
+				break
+			} else {
+				pool.Close()
+				log.Printf("Attempt %d: Failed to ping database: %v", attempt, pingErr)
+			}
+		} else {
+			log.Printf("Attempt %d: Failed to connect to database: %v", attempt, err)
+		}
+		cancel()
+		if attempt == 5 {
+			log.Fatalf("Could not connect to database after 5 attempts")
+		}
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
 	}
 	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-	log.Println("Connected to PostgreSQL")
 
 	// Initialize repositories
 	userRepo := postgres.NewUserRepository(pool)
