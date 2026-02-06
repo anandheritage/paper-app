@@ -412,6 +412,22 @@ export default function Reader() {
 // HTML Reader component
 function HTMLReader({ htmlUrl, paper }: { htmlUrl: string | null; paper: Paper | null }) {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Timeout fallback: if iframe hasn't loaded after 15s, show error
+  useEffect(() => {
+    if (!htmlUrl) return;
+    setLoading(true);
+    setLoadError(false);
+    const timer = setTimeout(() => {
+      if (loading) {
+        setLoadError(true);
+        setLoading(false);
+      }
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [htmlUrl]);
 
   if (!htmlUrl) {
     return (
@@ -420,6 +436,26 @@ function HTMLReader({ htmlUrl, paper }: { htmlUrl: string | null; paper: Paper |
           <FileText className="h-16 w-16 mx-auto text-surface-300 dark:text-surface-700 mb-4" />
           <p className="text-surface-500">HTML version not available</p>
           <p className="text-sm text-surface-400 mt-1">Switch to PDF mode to read this paper</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <FileText className="h-16 w-16 mx-auto text-surface-300 dark:text-surface-700 mb-4" />
+          <p className="text-surface-500">HTML version couldn't be loaded</p>
+          <p className="text-sm text-surface-400 mt-1 mb-3">The paper may not have an HTML version, or the service is temporarily down</p>
+          <a
+            href={htmlUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors"
+          >
+            Open HTML in new tab
+          </a>
         </div>
       </div>
     );
@@ -436,10 +472,12 @@ function HTMLReader({ htmlUrl, paper }: { htmlUrl: string | null; paper: Paper |
         </div>
       )}
       <iframe
+        ref={iframeRef}
         src={htmlUrl}
         className="w-full h-full border-0"
         title={paper?.title || 'Paper'}
-        onLoad={() => setLoading(false)}
+        onLoad={() => { setLoading(false); setLoadError(false); }}
+        onError={() => { setLoadError(true); setLoading(false); }}
         sandbox="allow-scripts allow-same-origin allow-popups"
       />
     </div>

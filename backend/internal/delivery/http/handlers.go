@@ -312,7 +312,8 @@ func (h *Handler) GetPaperHTMLURL(w http.ResponseWriter, r *http.Request) {
 	htmlURL := ""
 	switch paper.Source {
 	case "arxiv":
-		htmlURL = fmt.Sprintf("https://ar5iv.labs.arxiv.org/html/%s", paper.ExternalID)
+		// arXiv now serves HTML directly (preferred over ar5iv which is often down)
+		htmlURL = fmt.Sprintf("https://arxiv.org/html/%s", paper.ExternalID)
 	case "pubmed":
 		// Try to get PMC ID from metadata
 		if paper.Metadata != nil {
