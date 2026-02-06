@@ -38,7 +38,8 @@ type JWTConfig struct {
 }
 
 type GoogleConfig struct {
-	ClientID string
+	ClientID     string
+	ClientSecret string
 }
 
 type CORSConfig struct {
@@ -62,7 +63,8 @@ func Load() *Config {
 			RefreshExpiry: getDurationEnv("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
 		},
 		Google: GoogleConfig{
-			ClientID: getEnv("GOOGLE_CLIENT_ID", ""),
+			ClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+			ClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: getSliceEnv("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),

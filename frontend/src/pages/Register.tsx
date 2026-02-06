@@ -42,10 +42,10 @@ export default function Register() {
     }
   };
 
-  const handleGoogleSuccess = async (accessToken: string) => {
+  const handleGoogleSuccess = async (code: string) => {
     setLoading(true);
     try {
-      const res = await authApi.googleLogin(accessToken);
+      const res = await authApi.googleLogin(code);
       if (res?.user && res?.tokens) {
         setAuth(res.user, res.tokens);
         toast.success('Welcome!');
@@ -53,8 +53,9 @@ export default function Register() {
       } else {
         toast.error('Unexpected response from server');
       }
-    } catch {
-      toast.error('Google login failed');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Google sign-up failed';
+      toast.error(message);
     } finally {
       setLoading(false);
     }

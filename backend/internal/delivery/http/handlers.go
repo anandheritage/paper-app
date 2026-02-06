@@ -3,10 +3,8 @@ package http
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -107,7 +105,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 type googleLoginRequest struct {
-	AccessToken string `json:"access_token"`
+	Code        string `json:"code"`
+	AccessToken string `json:"access_token"` // legacy: implicit flow (deprecated)
 }
 
 func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
@@ -117,12 +116,12 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.AccessToken == "" {
-		writeError(w, http.StatusBadRequest, "Access token is required")
+	if req.Code == "" && req.AccessToken == "" {
+		writeError(w, http.StatusBadRequest, "Authorization code is required")
 		return
 	}
 
-	user, tokens, err := h.authUsecase.GoogleLogin(req.AccessToken)
+	user, tokens, err := h.authUsecase.GoogleLogin(req.Code, req.AccessToken)
 	if err == usecase.ErrInvalidGoogleToken {
 		writeError(w, http.StatusUnauthorized, "Invalid Google token")
 		return
@@ -233,6 +232,9 @@ func (h *Handler) GetPaper(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, paper)
 }
 
+// GetPaperPDFURL returns the source PDF URL for a paper.
+// Per arXiv Terms of Use, we direct users to arXiv.org to retrieve e-print
+// content rather than storing/serving PDFs from our servers.
 func (h *Handler) ProxyPDF(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
@@ -251,58 +253,15 @@ func (h *Handler) ProxyPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build candidate PDF URLs to try
-	candidates := []string{paper.PDFURL}
+	// Build the canonical source PDF URL
+	pdfURL := paper.PDFURL
 	if paper.Source == "arxiv" {
-		// arXiv PDF URL patterns
-		candidates = []string{
-			fmt.Sprintf("https://arxiv.org/pdf/%s.pdf", paper.ExternalID),
-			fmt.Sprintf("https://arxiv.org/pdf/%s", paper.ExternalID),
-			paper.PDFURL,
-		}
+		pdfURL = fmt.Sprintf("https://arxiv.org/pdf/%s", paper.ExternalID)
 	}
 
-	// Proxy the PDF to avoid CORS issues — try each URL
-	client := &http.Client{
-		Timeout: 60 * time.Second,
-	}
-
-	var pdfResp *http.Response
-	for _, pdfURL := range candidates {
-		req, reqErr := http.NewRequest("GET", pdfURL, nil)
-		if reqErr != nil {
-			continue
-		}
-		// Set a realistic User-Agent — some servers block default Go UA
-		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; PaperApp/1.0; +https://paper-app.dev)")
-
-		resp, fetchErr := client.Do(req)
-		if fetchErr != nil {
-			continue
-		}
-
-		contentType := resp.Header.Get("Content-Type")
-		if resp.StatusCode == http.StatusOK && (strings.Contains(contentType, "pdf") || strings.Contains(contentType, "octet-stream")) {
-			pdfResp = resp
-			break
-		}
-		resp.Body.Close()
-	}
-
-	if pdfResp == nil {
-		writeError(w, http.StatusBadGateway, "Failed to fetch PDF from source")
-		return
-	}
-	defer pdfResp.Body.Close()
-
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s.pdf\"", paper.ExternalID))
-	if pdfResp.ContentLength > 0 {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", pdfResp.ContentLength))
-	}
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.WriteHeader(http.StatusOK)
-	io.Copy(w, pdfResp.Body)
+	// Redirect to the source — legal compliance with arXiv ToU
+	// "Direct users to arXiv.org to retrieve e-print content"
+	http.Redirect(w, r, pdfURL, http.StatusFound)
 }
 
 func (h *Handler) GetPaperHTMLURL(w http.ResponseWriter, r *http.Request) {

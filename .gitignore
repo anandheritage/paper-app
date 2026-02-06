@@ -34,4 +34,7 @@ docker-compose.override.yml
 # Logs
 *.log
 backend/server
+backend/ingest
+backend/enrich
 .vercel
+data/

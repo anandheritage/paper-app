@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -126,32 +127,65 @@ func (r *PaperRepository) GetByExternalID(externalID string) (*domain.Paper, err
 	return paper, nil
 }
 
-func (r *PaperRepository) Search(query string, source string, limit, offset int) ([]*domain.Paper, int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (r *PaperRepository) Search(query string, source string, limit, offset int, sortBy string) ([]*domain.Paper, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Use PostgreSQL full-text search with tsvector
-	baseQuery := `
-		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, COALESCE(citation_count, 0), created_at
-		FROM papers
+	if sortBy == "" {
+		sortBy = "relevance"
+	}
+
+	// WHERE clause: full-text search + optional source filter
+	whereClause := `
 		WHERE ($1 = '' OR search_vector @@ plainto_tsquery('english', $1) OR title ILIKE '%' || $1 || '%')
 		AND ($2 = '' OR source = $2)
-		ORDER BY
-			CASE WHEN $1 != '' AND search_vector @@ plainto_tsquery('english', $1)
-				THEN ts_rank(search_vector, plainto_tsquery('english', $1))
-				ELSE 0
-			END DESC,
-			citation_count DESC,
-			created_at DESC
-		LIMIT $3 OFFSET $4
 	`
 
-	countQuery := `
+	// ORDER BY depends on sort mode
+	var orderClause string
+	switch sortBy {
+	case "citations":
+		orderClause = `
+			ORDER BY citation_count DESC,
+				CASE WHEN $1 != '' AND search_vector @@ plainto_tsquery('english', $1)
+					THEN ts_rank(search_vector, plainto_tsquery('english', $1))
+					ELSE 0
+				END DESC,
+				published_date DESC NULLS LAST
+		`
+	case "date":
+		orderClause = `
+			ORDER BY published_date DESC NULLS LAST,
+				CASE WHEN $1 != '' AND search_vector @@ plainto_tsquery('english', $1)
+					THEN ts_rank(search_vector, plainto_tsquery('english', $1))
+					ELSE 0
+				END DESC
+		`
+	default: // relevance
+		orderClause = `
+			ORDER BY
+				CASE WHEN $1 != '' AND search_vector @@ plainto_tsquery('english', $1)
+					THEN ts_rank(search_vector, plainto_tsquery('english', $1))
+					ELSE 0
+				END DESC,
+				citation_count DESC,
+				published_date DESC NULLS LAST
+		`
+	}
+
+	selectQuery := fmt.Sprintf(`
+		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, COALESCE(citation_count, 0), created_at
+		FROM papers
+		%s
+		%s
+		LIMIT $3 OFFSET $4
+	`, whereClause, orderClause)
+
+	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM papers
-		WHERE ($1 = '' OR search_vector @@ plainto_tsquery('english', $1) OR title ILIKE '%' || $1 || '%')
-		AND ($2 = '' OR source = $2)
-	`
+		%s
+	`, whereClause)
 
 	var total int
 	err := r.db.QueryRow(ctx, countQuery, query, source).Scan(&total)
@@ -159,7 +193,7 @@ func (r *PaperRepository) Search(query string, source string, limit, offset int)
 		return nil, 0, err
 	}
 
-	rows, err := r.db.Query(ctx, baseQuery, query, source, limit, offset)
+	rows, err := r.db.Query(ctx, selectQuery, query, source, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}

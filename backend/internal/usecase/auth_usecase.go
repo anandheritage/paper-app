@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -119,24 +120,33 @@ type GoogleUserInfo struct {
 	FamilyName    string `json:"family_name"`
 }
 
-func (u *AuthUsecase) GoogleLogin(accessToken string) (*domain.User, *TokenPair, error) {
-	// Verify the Google access token by fetching user info
-	userInfo, err := u.fetchGoogleUserInfo(accessToken)
+func (u *AuthUsecase) GoogleLogin(code, accessToken string) (*domain.User, *TokenPair, error) {
+	var userInfo *GoogleUserInfo
+	var err error
+
+	if code != "" {
+		// Preferred: exchange authorization code for tokens, then fetch user info
+		userInfo, err = u.exchangeGoogleCode(code)
+	} else if accessToken != "" {
+		// Legacy fallback: use access token directly (implicit flow, deprecated by Google)
+		userInfo, err = u.fetchGoogleUserInfo(accessToken)
+	} else {
+		return nil, nil, ErrInvalidGoogleToken
+	}
+
 	if err != nil {
 		return nil, nil, ErrInvalidGoogleToken
 	}
 
-	tokenInfo := userInfo
-
 	// Check if user already exists with this Google ID
-	user, err := u.userRepo.GetByProviderID("google", tokenInfo.Sub)
+	user, err := u.userRepo.GetByProviderID("google", userInfo.Sub)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if user == nil {
 		// Check if email is already registered
-		user, err = u.userRepo.GetByEmail(tokenInfo.Email)
+		user, err = u.userRepo.GetByEmail(userInfo.Email)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -144,9 +154,9 @@ func (u *AuthUsecase) GoogleLogin(accessToken string) (*domain.User, *TokenPair,
 		if user != nil {
 			// Link Google to existing account
 			user.AuthProvider = "google"
-			user.ProviderID = tokenInfo.Sub
+			user.ProviderID = userInfo.Sub
 			if user.Name == "" {
-				user.Name = tokenInfo.Name
+				user.Name = userInfo.Name
 			}
 			if err := u.userRepo.Update(user); err != nil {
 				return nil, nil, err
@@ -154,10 +164,10 @@ func (u *AuthUsecase) GoogleLogin(accessToken string) (*domain.User, *TokenPair,
 		} else {
 			// Create new user
 			user = &domain.User{
-				Email:        tokenInfo.Email,
-				Name:         tokenInfo.Name,
+				Email:        userInfo.Email,
+				Name:         userInfo.Name,
 				AuthProvider: "google",
-				ProviderID:   tokenInfo.Sub,
+				ProviderID:   userInfo.Sub,
 			}
 			if err := u.userRepo.Create(user); err != nil {
 				return nil, nil, err
@@ -171,6 +181,47 @@ func (u *AuthUsecase) GoogleLogin(accessToken string) (*domain.User, *TokenPair,
 	}
 
 	return user, tokens, nil
+}
+
+// exchangeGoogleCode exchanges an authorization code for tokens, then fetches user info.
+// This is the server-side step of the OAuth2 authorization code flow.
+func (u *AuthUsecase) exchangeGoogleCode(code string) (*GoogleUserInfo, error) {
+	data := url.Values{}
+	data.Set("code", code)
+	data.Set("client_id", u.googleCfg.ClientID)
+	data.Set("client_secret", u.googleCfg.ClientSecret)
+	data.Set("redirect_uri", "postmessage")
+	data.Set("grant_type", "authorization_code")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.PostForm("https://oauth2.googleapis.com/token", data)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		_ = body // token exchange failed
+		return nil, ErrInvalidGoogleToken
+	}
+
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		IDToken     string `json:"id_token"`
+		ExpiresIn   int    `json:"expires_in"`
+		TokenType   string `json:"token_type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return nil, err
+	}
+
+	if tokenResp.AccessToken == "" {
+		return nil, ErrInvalidGoogleToken
+	}
+
+	// Use the obtained access token to fetch user info
+	return u.fetchGoogleUserInfo(tokenResp.AccessToken)
 }
 
 func (u *AuthUsecase) fetchGoogleUserInfo(accessToken string) (*GoogleUserInfo, error) {

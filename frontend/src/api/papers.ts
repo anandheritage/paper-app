@@ -10,9 +10,13 @@ export const papersApi = {
     return api.get(`/api/v1/papers/${id}`);
   },
 
-  getPdfUrl(id: string): string {
-    const base = import.meta.env.VITE_API_URL || '';
-    return `${base}/api/v1/papers/${id}/pdf`;
+  // Returns the direct source PDF URL (arXiv, etc.) — we link to the source
+  // per arXiv Terms of Use rather than proxying through our backend.
+  getPdfUrl(paper: { source: string; external_id: string; pdf_url: string }): string {
+    if (paper.source === 'arxiv') {
+      return `https://arxiv.org/pdf/${paper.external_id}`;
+    }
+    return paper.pdf_url;
   },
 
   getHtmlUrl(id: string): Promise<HTMLURLResponse> {

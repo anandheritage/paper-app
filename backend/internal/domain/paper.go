@@ -30,7 +30,7 @@ type PaperRepository interface {
 	Create(paper *Paper) error
 	GetByID(id uuid.UUID) (*Paper, error)
 	GetByExternalID(externalID string) (*Paper, error)
-	Search(query string, source string, limit, offset int) ([]*Paper, int, error)
+	Search(query string, source string, limit, offset int, sortBy string) ([]*Paper, int, error)
 	Delete(id uuid.UUID) error
 }
 

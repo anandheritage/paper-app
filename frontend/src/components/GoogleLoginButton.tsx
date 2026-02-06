@@ -10,12 +10,16 @@ class GoogleErrorBoundary extends Component<{children: ReactNode}, {error: Error
   render() { return this.state.error ? null : this.props.children; }
 }
 
-function GoogleLoginButtonInner({ onSuccess, disabled }: { onSuccess: (accessToken: string) => void; disabled?: boolean }) {
+function GoogleLoginButtonInner({ onSuccess, disabled }: { onSuccess: (code: string) => void; disabled?: boolean }) {
   const googleLogin = useGoogleLogin({
-    onSuccess: (tokenResponse) => {
-      onSuccess(tokenResponse.access_token);
+    flow: 'auth-code',
+    onSuccess: (codeResponse) => {
+      onSuccess(codeResponse.code);
     },
-    onError: () => toast.error('Google login failed'),
+    onError: (errorResponse) => {
+      console.error('Google login error:', errorResponse);
+      toast.error('Google sign-in failed. Please try again.');
+    },
   });
 
   return (
@@ -35,7 +39,7 @@ function GoogleLoginButtonInner({ onSuccess, disabled }: { onSuccess: (accessTok
   );
 }
 
-export default function GoogleLoginButton({ onSuccess, disabled }: { onSuccess: (accessToken: string) => void; disabled?: boolean }) {
+export default function GoogleLoginButton({ onSuccess, disabled }: { onSuccess: (code: string) => void; disabled?: boolean }) {
   if (!hasGoogleOAuth) {
     return null;
   }

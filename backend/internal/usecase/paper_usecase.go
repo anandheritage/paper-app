@@ -44,29 +44,78 @@ func (u *PaperUsecase) SearchPapers(query, source string, limit, offset int, sor
 		sort = "relevance"
 	}
 
-	// Route all searches through OpenAlex first (best relevance + citation data).
-	// For "pubmed" source, we still try OpenAlex then fall back to PubMed API.
-	results, err := u.openalex.Search(query, source, sort, limit, offset)
-	if err == nil {
-		// Cache papers in database
-		for _, paper := range results.Papers {
-			u.paperRepo.Create(paper)
-		}
+	// For PubMed-specific searches, use the PubMed API (we don't have PubMed
+	// bulk data locally).
+	if source == "pubmed" {
+		return u.searchPubMed(query, limit, offset)
+	}
 
+	// For all/arXiv searches, prefer local DB (contains ~2.4M arXiv papers
+	// from the Kaggle bulk import).
+	papers, total, err := u.paperRepo.Search(query, source, limit, offset, sort)
+	if err != nil {
+		log.Printf("Local DB search failed: %v — falling back to APIs", err)
+		return u.searchAPIs(query, source, sort, limit, offset)
+	}
+
+	if total > 0 {
 		return &SearchResult{
-			Papers: results.Papers,
-			Total:  results.TotalResults,
+			Papers: papers,
+			Total:  total,
 			Offset: offset,
 			Limit:  limit,
 		}, nil
 	}
 
-	// OpenAlex failed — fall back to individual APIs
-	log.Printf("OpenAlex search failed, falling back to individual APIs: %v", err)
+	// No local results — fall back to external APIs
+	log.Printf("No local results for %q — falling back to APIs", query)
+	return u.searchAPIs(query, source, sort, limit, offset)
+}
+
+// searchAPIs tries OpenAlex first, then arXiv+PubMed as a last resort.
+func (u *PaperUsecase) searchAPIs(query, source, sort string, limit, offset int) (*SearchResult, error) {
+	// Try OpenAlex (best quality, has citation counts)
+	if u.openalex != nil {
+		results, err := u.openalex.Search(query, source, sort, limit, offset)
+		if err == nil && len(results.Papers) > 0 {
+			// Cache in local DB
+			for _, p := range results.Papers {
+				u.paperRepo.Create(p)
+			}
+			return &SearchResult{
+				Papers: results.Papers,
+				Total:  results.TotalResults,
+				Offset: offset,
+				Limit:  limit,
+			}, nil
+		}
+		if err != nil {
+			log.Printf("OpenAlex search failed: %v", err)
+		}
+	}
+
+	// Fall back to individual source APIs
 	return u.fallbackSearch(query, source, limit, offset)
 }
 
-// fallbackSearch uses arXiv and/or PubMed APIs directly when OpenAlex is unavailable
+// searchPubMed searches the PubMed API directly.
+func (u *PaperUsecase) searchPubMed(query string, limit, offset int) (*SearchResult, error) {
+	results, err := u.pubmed.Search(query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range results.Papers {
+		u.paperRepo.Create(p)
+	}
+	return &SearchResult{
+		Papers: results.Papers,
+		Total:  results.TotalResults,
+		Offset: offset,
+		Limit:  limit,
+	}, nil
+}
+
+// fallbackSearch uses arXiv and/or PubMed APIs directly when OpenAlex is unavailable.
 func (u *PaperUsecase) fallbackSearch(query, source string, limit, offset int) (*SearchResult, error) {
 	var papers []*domain.Paper
 	var total int
