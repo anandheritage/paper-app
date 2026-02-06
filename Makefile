@@ -54,6 +54,15 @@ migrate-up:
 migrate-down:
 	cd backend && go run cmd/migrate/main.go down
 
+# Deployment
+deploy-backend:
+	cd backend && railway up --no-gitignore --detach
+
+deploy-frontend:
+	cd frontend && npx vercel --prod --yes
+
+deploy: deploy-backend deploy-frontend
+
 # Clean build artifacts
 clean:
 	rm -rf frontend/dist
