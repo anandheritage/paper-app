@@ -202,7 +202,7 @@ func (u *AuthUsecase) exchangeGoogleCode(code string) (*GoogleUserInfo, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		_ = body // token exchange failed
+		_ = body
 		return nil, ErrInvalidGoogleToken
 	}
 

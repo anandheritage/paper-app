@@ -3,10 +3,6 @@ import { Component, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 
 const hasGoogleOAuth = !!import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim();
-// #region agent log
-const _dbg = (loc: string, msg: string, data: Record<string, unknown>, hId: string) => fetch('http://127.0.0.1:7243/ingest/8d1a3c41-fcb2-4ddc-ae90-28fa3d3a7afb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:loc,message:msg,data,timestamp:Date.now(),sessionId:'debug-session',hypothesisId:hId})}).catch(()=>{});
-_dbg('GoogleLoginButton.tsx:TOP','hasGoogleOAuth check',{hasGoogleOAuth,rawEnvValue:import.meta.env.VITE_GOOGLE_CLIENT_ID ?? 'UNDEFINED',trimmedValue:(import.meta.env.VITE_GOOGLE_CLIENT_ID||'').trim(),hadWhitespace:(import.meta.env.VITE_GOOGLE_CLIENT_ID||'')!==(import.meta.env.VITE_GOOGLE_CLIENT_ID||'').trim()},'A');
-// #endregion
 
 class GoogleErrorBoundary extends Component<{children: ReactNode}, {error: Error | null}> {
   state = { error: null as Error | null };
@@ -17,15 +13,9 @@ class GoogleErrorBoundary extends Component<{children: ReactNode}, {error: Error
 function GoogleLoginButtonInner({ onSuccess, disabled }: { onSuccess: (token: string) => void; disabled?: boolean }) {
   const googleLogin = useGoogleLogin({
     onSuccess: (tokenResponse) => {
-      // #region agent log
-      _dbg('GoogleLoginButton.tsx:onSuccess','implicit flow succeeded',{hasAccessToken:!!tokenResponse.access_token,tokenType:tokenResponse.token_type??'NONE'},'B');
-      // #endregion
       onSuccess(tokenResponse.access_token);
     },
     onError: (errorResponse) => {
-      // #region agent log
-      _dbg('GoogleLoginButton.tsx:onError','implicit flow failed',{error:JSON.stringify(errorResponse)},'B');
-      // #endregion
       console.error('Google login error:', errorResponse);
       toast.error('Google sign-in failed. Please try again.');
     },
