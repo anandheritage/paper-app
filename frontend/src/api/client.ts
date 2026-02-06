@@ -8,8 +8,6 @@ interface RequestOptions extends RequestInit {
 
 class ApiClient {
   private baseURL: string;
-  // Mutex for token refresh - prevents race condition when multiple
-  // requests get 401 simultaneously and all try to refresh
   private refreshPromise: Promise<boolean> | null = null;
 
   constructor(baseURL: string) {
@@ -52,16 +50,15 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      // Skip refresh for auth endpoints to avoid loops
+      // Don't try to refresh on auth endpoints — avoids infinite loops
       if (path.includes('/auth/login') || path.includes('/auth/register') || path.includes('/auth/google')) {
         const errorBody = await response.json().catch(() => ({ error: 'Unauthorized' }));
         throw new ApiError(response.status, errorBody.error || 'Unauthorized');
       }
 
-      // Try to refresh the token (with mutex to prevent race condition)
+      // Try to refresh the token (mutex prevents concurrent refresh attempts)
       const refreshed = await this.tryRefresh();
       if (refreshed) {
-        // Retry the request with new token
         const retryResponse = await fetch(url, {
           ...fetchOptions,
           headers: {
@@ -75,9 +72,10 @@ class ApiClient {
         if (retryResponse.status === 204) return undefined as T;
         return retryResponse.json();
       }
+
+      // Refresh failed — log out. React routing will handle redirect.
       useAuthStore.getState().logout();
-      window.location.href = '/login';
-      throw new ApiError(401, 'Unauthorized');
+      throw new ApiError(401, 'Session expired');
     }
 
     if (!response.ok) {
@@ -90,7 +88,6 @@ class ApiClient {
   }
 
   private async tryRefresh(): Promise<boolean> {
-    // If a refresh is already in progress, wait for it instead of making a new one
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
@@ -98,7 +95,6 @@ class ApiClient {
     const tokens = useAuthStore.getState().tokens;
     if (!tokens?.refresh_token) return false;
 
-    // Create the refresh promise so other concurrent 401 handlers can wait on it
     this.refreshPromise = this.doRefresh(tokens.refresh_token);
 
     try {

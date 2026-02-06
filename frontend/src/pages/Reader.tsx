@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
+import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
 import type { Paper, UserPaper } from '../types';
 
@@ -19,6 +20,7 @@ export default function Reader() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isDark, toggle: toggleTheme } = useThemeStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const [viewMode, setViewMode] = useState<ViewMode>('html');
   const [notesOpen, setNotesOpen] = useState(false);
@@ -40,10 +42,11 @@ export default function Reader() {
     enabled: !!id,
   });
 
-  // Fetch library data (to get user paper with notes)
+  // Fetch library data only if authenticated
   const { data: libraryData } = useQuery({
     queryKey: ['library', ''],
     queryFn: () => libraryApi.getLibrary('', 100, 0),
+    enabled: isAuthenticated,
   });
 
   const userPaper: UserPaper | undefined = libraryData?.papers?.find((up) => up.paper_id === id);
@@ -59,7 +62,7 @@ export default function Reader() {
     }
   }, [userPaper]);
 
-  // Fetch HTML URL (backend verifies availability before returning)
+  // Fetch HTML URL
   useEffect(() => {
     if (id) {
       papersApi.getHtmlUrl(id)
@@ -72,14 +75,13 @@ export default function Reader() {
           }
         })
         .catch(() => {
-          // 404 = HTML version not available for this paper
           setHtmlError(true);
           setViewMode('pdf');
         });
     }
   }, [id]);
 
-  // Auto-save reading progress
+  // Auto-save reading progress (only when authenticated)
   const updateMutation = useMutation({
     mutationFn: (data: { status?: string; reading_progress?: number; notes?: string }) =>
       libraryApi.updatePaper(id!, data),
@@ -88,7 +90,7 @@ export default function Reader() {
     },
   });
 
-  // Save paper to library and set as reading on mount
+  // Save paper to library on mount (only when authenticated)
   const saveMutation = useMutation({
     mutationFn: libraryApi.savePaper,
     onSuccess: () => {
@@ -98,14 +100,15 @@ export default function Reader() {
   });
 
   useEffect(() => {
-    if (id && libraryData && !userPaper) {
+    if (!isAuthenticated || !id || !libraryData) return;
+    if (!userPaper) {
       saveMutation.mutate(id);
-    } else if (userPaper && userPaper.status === 'saved') {
+    } else if (userPaper.status === 'saved') {
       updateMutation.mutate({ status: 'reading' });
     }
-  }, [id, libraryData, userPaper]);
+  }, [id, libraryData, userPaper, isAuthenticated]);
 
-  // Track reading progress by scroll position
+  // Track reading progress by scroll
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.scrollY;
@@ -120,8 +123,10 @@ export default function Reader() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [readingProgress]);
 
-  // Auto-save progress every 30 seconds
+  // Auto-save progress every 30 seconds (only when authenticated)
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     progressTimerRef.current = setInterval(() => {
       if (readingProgress > 0 && id) {
         updateMutation.mutate({ reading_progress: readingProgress });
@@ -130,12 +135,11 @@ export default function Reader() {
 
     return () => {
       if (progressTimerRef.current) clearInterval(progressTimerRef.current);
-      // Save on unmount
       if (readingProgress > 0 && id) {
         libraryApi.updatePaper(id, { reading_progress: readingProgress }).catch(() => {});
       }
     };
-  }, [readingProgress, id]);
+  }, [readingProgress, id, isAuthenticated]);
 
   // Bookmark toggle
   const bookmarkMutation = useMutation({
@@ -153,23 +157,34 @@ export default function Reader() {
     },
   });
 
+  const handleBookmark = () => {
+    if (!isAuthenticated) {
+      toast.error('Sign in to bookmark papers');
+      return;
+    }
+    bookmarkMutation.mutate();
+  };
+
   // Save notes
   const saveNotes = useCallback(() => {
+    if (!isAuthenticated) {
+      toast.error('Sign in to save notes');
+      return;
+    }
     if (id && notes !== (userPaper?.notes || '')) {
       updateMutation.mutate({ notes });
       toast.success('Notes saved');
     }
-  }, [id, notes, userPaper]);
+  }, [id, notes, userPaper, isAuthenticated]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger when typing in notes textarea
       if (e.target instanceof HTMLTextAreaElement) return;
 
       switch (e.key) {
         case 'b':
-          bookmarkMutation.mutate();
+          handleBookmark();
           break;
         case 'n':
           setNotesOpen((prev) => !prev);
@@ -198,7 +213,7 @@ export default function Reader() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewMode, pdfPage, pdfTotalPages, notesOpen, htmlError, isBookmarked]);
+  }, [viewMode, pdfPage, pdfTotalPages, notesOpen, htmlError, isBookmarked, isAuthenticated]);
 
   const pdfUrl = paper ? papersApi.getPdfUrl(paper.id) : '';
 
@@ -302,9 +317,9 @@ export default function Reader() {
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
 
-          {/* Bookmark */}
+          {/* Bookmark (auth-gated) */}
           <button
-            onClick={() => bookmarkMutation.mutate()}
+            onClick={handleBookmark}
             className={`p-2 rounded-lg transition-colors ${
               isBookmarked
                 ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950'
@@ -332,7 +347,6 @@ export default function Reader() {
 
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Reader content */}
         <div className={`flex-1 overflow-auto transition-all duration-300 ${notesOpen ? 'mr-80' : ''}`}>
           {viewMode === 'html' ? (
             <HTMLReader htmlUrl={htmlUrl} paper={paper || null} />
@@ -367,22 +381,24 @@ export default function Reader() {
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Write your notes here..."
-              className="w-full h-full resize-none bg-transparent text-surface-800 dark:text-surface-200 placeholder:text-surface-400 focus:outline-none text-sm leading-relaxed"
+              placeholder={isAuthenticated ? 'Write your notes here...' : 'Sign in to save notes'}
+              disabled={!isAuthenticated}
+              className="w-full h-full resize-none bg-transparent text-surface-800 dark:text-surface-200 placeholder:text-surface-400 focus:outline-none text-sm leading-relaxed disabled:opacity-60"
             />
           </div>
           <div className="px-4 py-3 border-t border-surface-200 dark:border-surface-800">
             <button
               onClick={saveNotes}
-              className="w-full py-2 px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors"
+              disabled={!isAuthenticated}
+              className="w-full py-2 px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save Notes
+              {isAuthenticated ? 'Save Notes' : 'Sign in to save'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* PDF page navigation (bottom bar) */}
+      {/* PDF page navigation */}
       {viewMode === 'pdf' && pdfTotalPages > 0 && (
         <footer className="flex items-center justify-center gap-4 px-4 py-2 border-t border-surface-200 dark:border-surface-800 bg-white/90 dark:bg-surface-950/90 backdrop-blur-lg">
           <button
@@ -423,7 +439,6 @@ function HTMLReader({ htmlUrl, paper }: { htmlUrl: string | null; paper: Paper |
   const [loadError, setLoadError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Timeout fallback: if iframe hasn't loaded after 15s, show error
   useEffect(() => {
     if (!htmlUrl) return;
     setLoading(true);
@@ -492,7 +507,7 @@ function HTMLReader({ htmlUrl, paper }: { htmlUrl: string | null; paper: Paper |
   );
 }
 
-// PDF Reader component using iframe (reliable, no complex library setup)
+// PDF Reader component
 function PDFReader({
   pdfUrl,
   page,
@@ -515,7 +530,6 @@ function PDFReader({
   const pdfDocRef = useRef<any>(null);
   const renderTaskRef = useRef<any>(null);
 
-  // Load PDF using pdfjs-dist
   useEffect(() => {
     let cancelled = false;
 
@@ -547,7 +561,6 @@ function PDFReader({
     return () => { cancelled = true; };
   }, [pdfUrl]);
 
-  // Render current page
   useEffect(() => {
     const pdf = pdfDocRef.current;
     const canvas = canvasRef.current;
@@ -557,7 +570,6 @@ function PDFReader({
 
     async function renderPage() {
       try {
-        // Cancel any pending render
         if (renderTaskRef.current) {
           renderTaskRef.current.cancel();
         }

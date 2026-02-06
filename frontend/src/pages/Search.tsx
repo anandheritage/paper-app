@@ -5,6 +5,7 @@ import { Search as SearchIcon, Filter, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
+import { useAuthStore } from '../stores/authStore';
 import PaperCard from '../components/PaperCard';
 import { ListSkeleton } from '../components/Skeleton';
 
@@ -20,6 +21,7 @@ export default function Search() {
   const [source, setSource] = useState(searchParams.get('source') || '');
   const [page, setPage] = useState(0);
   const queryClient = useQueryClient();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const searchQuery = searchParams.get('q') || '';
   const searchSource = searchParams.get('source') || '';
@@ -59,6 +61,15 @@ export default function Search() {
     if (!query.trim()) return;
     setPage(0);
     setSearchParams({ q: query.trim(), ...(source ? { source } : {}) });
+  };
+
+  const handleBookmark = (id: string) => {
+    if (!isAuthenticated) {
+      toast.error('Sign in to bookmark papers');
+      return;
+    }
+    saveMutation.mutate(id);
+    bookmarkMutation.mutate(id);
   };
 
   const totalPages = data ? Math.ceil(data.total / 20) : 0;
@@ -148,10 +159,7 @@ export default function Search() {
               <PaperCard
                 key={paper.id}
                 paper={paper}
-                onBookmark={(id) => {
-                  saveMutation.mutate(id);
-                  bookmarkMutation.mutate(id);
-                }}
+                onBookmark={handleBookmark}
               />
             ))}
           </div>

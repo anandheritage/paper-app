@@ -4,12 +4,14 @@ import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus,
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
+import { useAuthStore } from '../stores/authStore';
 import { PaperDetailSkeleton } from '../components/Skeleton';
 
 export default function PaperDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const { data: paper, isLoading } = useQuery({
     queryKey: ['paper', id],
@@ -20,6 +22,7 @@ export default function PaperDetail() {
   const { data: libraryData } = useQuery({
     queryKey: ['library', ''],
     queryFn: () => libraryApi.getLibrary('', 100, 0),
+    enabled: isAuthenticated,
   });
 
   const userPaper = libraryData?.papers?.find((up) => up.paper_id === id);
@@ -61,6 +64,21 @@ export default function PaperDetail() {
       queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
     },
   });
+
+  const handleSave = () => {
+    if (!isAuthenticated) { toast.error('Sign in to save papers'); return; }
+    saveMutation.mutate(paper!.id);
+  };
+
+  const handleRemove = () => {
+    removeMutation.mutate(paper!.id);
+  };
+
+  const handleBookmarkToggle = () => {
+    if (!isAuthenticated) { toast.error('Sign in to bookmark papers'); return; }
+    if (isBookmarked) unbookmarkMutation.mutate(paper!.id);
+    else bookmarkMutation.mutate(paper!.id);
+  };
 
   if (isLoading) {
     return (
@@ -150,35 +168,39 @@ export default function PaperDetail() {
             Read Paper
           </button>
 
-          {isSaved ? (
-            <button
-              onClick={() => removeMutation.mutate(paper.id)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 font-medium hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
-            >
-              <Check className="h-4 w-4" />
-              In Library
-            </button>
-          ) : (
-            <button
-              onClick={() => saveMutation.mutate(paper.id)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 font-medium hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
-            >
-              <Plus className="h-4 w-4" />
-              Save to Library
-            </button>
-          )}
+          {isAuthenticated && (
+            <>
+              {isSaved ? (
+                <button
+                  onClick={handleRemove}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 font-medium hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
+                >
+                  <Check className="h-4 w-4" />
+                  In Library
+                </button>
+              ) : (
+                <button
+                  onClick={handleSave}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 font-medium hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                  Save to Library
+                </button>
+              )}
 
-          <button
-            onClick={() => isBookmarked ? unbookmarkMutation.mutate(paper.id) : bookmarkMutation.mutate(paper.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-medium transition-colors ${
-              isBookmarked
-                ? 'border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-950'
-                : 'border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800'
-            }`}
-          >
-            {isBookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
-            {isBookmarked ? 'Bookmarked' : 'Bookmark'}
-          </button>
+              <button
+                onClick={handleBookmarkToggle}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-medium transition-colors ${
+                  isBookmarked
+                    ? 'border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-950'
+                    : 'border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800'
+                }`}
+              >
+                {isBookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+                {isBookmarked ? 'Bookmarked' : 'Bookmark'}
+              </button>
+            </>
+          )}
 
           <a
             href={paper.pdf_url}

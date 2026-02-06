@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Library as LibraryIcon, BookOpen, Clock, CheckCircle, Bookmark, Trash2 } from 'lucide-react';
+import { Library as LibraryIcon, BookOpen, Clock, CheckCircle, Bookmark, Trash2, LogIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { libraryApi } from '../api/library';
+import { useAuthStore } from '../stores/authStore';
 import PaperCard from '../components/PaperCard';
 import { ListSkeleton } from '../components/Skeleton';
 
@@ -18,6 +19,7 @@ export default function Library() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(0);
   const queryClient = useQueryClient();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const activeTab = searchParams.get('tab') || 'library';
   const statusFilter = searchParams.get('status') || '';
@@ -25,13 +27,13 @@ export default function Library() {
   const { data: libraryData, isLoading: loadingLibrary } = useQuery({
     queryKey: ['library', statusFilter, page],
     queryFn: () => libraryApi.getLibrary(statusFilter, 20, page * 20),
-    enabled: activeTab === 'library',
+    enabled: activeTab === 'library' && isAuthenticated,
   });
 
   const { data: bookmarksData, isLoading: loadingBookmarks } = useQuery({
     queryKey: ['bookmarks', page],
     queryFn: () => libraryApi.getBookmarks(20, page * 20),
-    enabled: activeTab === 'bookmarks',
+    enabled: activeTab === 'bookmarks' && isAuthenticated,
   });
 
   const removeMutation = useMutation({
@@ -62,6 +64,28 @@ export default function Library() {
     },
     onError: () => toast.error('Failed to unbookmark'),
   });
+
+  // Not signed in
+  if (!isAuthenticated) {
+    return (
+      <div className="text-center py-20">
+        <LibraryIcon className="h-16 w-16 mx-auto text-surface-300 dark:text-surface-700 mb-4" />
+        <h2 className="text-xl font-semibold text-surface-900 dark:text-surface-100 mb-2">
+          Sign in to access your library
+        </h2>
+        <p className="text-surface-500 dark:text-surface-400 mb-6">
+          Save papers, track your reading progress, and organize your research
+        </p>
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-medium transition-colors"
+        >
+          <LogIn className="h-5 w-5" />
+          Sign in
+        </Link>
+      </div>
+    );
+  }
 
   const isLoading = activeTab === 'bookmarks' ? loadingBookmarks : loadingLibrary;
   const data = activeTab === 'bookmarks' ? bookmarksData : libraryData;
@@ -143,7 +167,6 @@ export default function Library() {
                   onBookmark={(id) => bookmarkMutation.mutate(id)}
                   onUnbookmark={(id) => unbookmarkMutation.mutate(id)}
                 />
-                {/* Reading progress bar */}
                 {up.reading_progress > 0 && (
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface-100 dark:bg-surface-800 rounded-b-xl overflow-hidden">
                     <div
@@ -152,7 +175,6 @@ export default function Library() {
                     />
                   </div>
                 )}
-                {/* Status badge */}
                 <div className="absolute top-3 right-16">
                   <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${
                     up.status === 'reading' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300' :
@@ -162,7 +184,6 @@ export default function Library() {
                     {up.status}
                   </span>
                 </div>
-                {/* Remove button */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
