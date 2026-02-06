@@ -1,7 +1,14 @@
 import { useGoogleLogin } from '@react-oauth/google';
+import { Component, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 
 const hasGoogleOAuth = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+class GoogleErrorBoundary extends Component<{children: ReactNode}, {error: Error | null}> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() { return this.state.error ? null : this.props.children; }
+}
 
 function GoogleLoginButtonInner({ onSuccess, disabled }: { onSuccess: (accessToken: string) => void; disabled?: boolean }) {
   const googleLogin = useGoogleLogin({
@@ -30,9 +37,12 @@ function GoogleLoginButtonInner({ onSuccess, disabled }: { onSuccess: (accessTok
 
 export default function GoogleLoginButton({ onSuccess, disabled }: { onSuccess: (accessToken: string) => void; disabled?: boolean }) {
   if (!hasGoogleOAuth) {
-    // Don't render Google button if no client ID is configured
     return null;
   }
 
-  return <GoogleLoginButtonInner onSuccess={onSuccess} disabled={disabled} />;
+  return (
+    <GoogleErrorBoundary>
+      <GoogleLoginButtonInner onSuccess={onSuccess} disabled={disabled} />
+    </GoogleErrorBoundary>
+  );
 }

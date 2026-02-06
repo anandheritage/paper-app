@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search as SearchIcon, Filter, X } from 'lucide-react';
+import { Search as SearchIcon, Filter, X, ArrowUpDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
@@ -15,20 +15,28 @@ const SOURCES = [
   { value: 'pubmed', label: 'PubMed' },
 ];
 
+const SORT_OPTIONS = [
+  { value: 'relevance', label: 'Relevance' },
+  { value: 'citations', label: 'Most Cited' },
+  { value: 'date', label: 'Newest First' },
+];
+
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [source, setSource] = useState(searchParams.get('source') || '');
+  const [sort, setSort] = useState(searchParams.get('sort') || 'relevance');
   const [page, setPage] = useState(0);
   const queryClient = useQueryClient();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const searchQuery = searchParams.get('q') || '';
   const searchSource = searchParams.get('source') || '';
+  const searchSort = searchParams.get('sort') || 'relevance';
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['search', searchQuery, searchSource, page],
-    queryFn: () => papersApi.search(searchQuery, searchSource, 20, page * 20),
+    queryKey: ['search', searchQuery, searchSource, searchSort, page],
+    queryFn: () => papersApi.search(searchQuery, searchSource, 20, page * 20, searchSort),
     enabled: !!searchQuery,
     placeholderData: (prev) => prev,
   });
@@ -54,13 +62,23 @@ export default function Search() {
   useEffect(() => {
     setQuery(searchParams.get('q') || '');
     setSource(searchParams.get('source') || '');
+    setSort(searchParams.get('sort') || 'relevance');
   }, [searchParams]);
+
+  const updateSearch = (params: Record<string, string>) => {
+    const newParams: Record<string, string> = {
+      q: params.q ?? searchQuery,
+      ...(params.source !== undefined ? (params.source ? { source: params.source } : {}) : (searchSource ? { source: searchSource } : {})),
+      ...(params.sort !== undefined ? (params.sort && params.sort !== 'relevance' ? { sort: params.sort } : {}) : (searchSort && searchSort !== 'relevance' ? { sort: searchSort } : {})),
+    };
+    setPage(0);
+    setSearchParams(newParams);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
-    setPage(0);
-    setSearchParams({ q: query.trim(), ...(source ? { source } : {}) });
+    updateSearch({ q: query.trim() });
   };
 
   const handleBookmark = (id: string) => {
@@ -79,7 +97,7 @@ export default function Search() {
       <div>
         <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Search Papers</h1>
         <p className="text-surface-500 dark:text-surface-400 mt-1">
-          Discover research papers from arXiv and PubMed
+          Discover research papers from arXiv, PubMed and Semantic Scholar
         </p>
       </div>
 
@@ -114,31 +132,60 @@ export default function Search() {
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-surface-400" />
-          <div className="flex gap-1">
-            {SOURCES.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => {
-                  setSource(s.value);
-                  if (searchQuery) {
-                    setPage(0);
-                    setSearchParams({ q: searchQuery, ...(s.value ? { source: s.value } : {}) });
-                  }
-                }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  source === s.value
-                    ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
-                    : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+        {/* Filters row */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-surface-400" />
+            <div className="flex gap-1">
+              {SOURCES.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => {
+                    setSource(s.value);
+                    if (searchQuery) {
+                      updateSearch({ source: s.value });
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    source === s.value
+                      ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                      : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Sort control */}
+          {searchQuery && (
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="h-4 w-4 text-surface-400" />
+              <div className="flex gap-1">
+                {SORT_OPTIONS.map((s) => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => {
+                      setSort(s.value);
+                      if (searchQuery) {
+                        updateSearch({ sort: s.value });
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      sort === s.value
+                        ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300'
+                        : 'text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </form>
 
@@ -175,7 +222,7 @@ export default function Search() {
                 Previous
               </button>
               <span className="text-sm text-surface-500">
-                Page {page + 1} of {totalPages}
+                Page {page + 1} of {Math.min(totalPages, 50)}
               </span>
               <button
                 onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
@@ -200,7 +247,7 @@ export default function Search() {
           <SearchIcon className="h-16 w-16 mx-auto text-surface-300 dark:text-surface-700 mb-4" />
           <h3 className="text-lg font-medium text-surface-900 dark:text-surface-100 mb-1">Search academic papers</h3>
           <p className="text-surface-500 dark:text-surface-400">
-            Enter keywords to search across arXiv and PubMed
+            Enter keywords to search across arXiv, PubMed and Semantic Scholar
           </p>
         </div>
       )}

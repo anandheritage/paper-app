@@ -19,6 +19,7 @@ import (
 	"github.com/paper-app/backend/internal/usecase"
 	"github.com/paper-app/backend/pkg/arxiv"
 	"github.com/paper-app/backend/pkg/pubmed"
+	"github.com/paper-app/backend/pkg/semanticscholar"
 )
 
 func main() {
@@ -64,10 +65,11 @@ func main() {
 	// Initialize external API clients
 	arxivClient := arxiv.NewClient()
 	pubmedClient := pubmed.NewClient()
+	s2Client := semanticscholar.NewClient()
 
 	// Initialize usecases
 	authUsecase := usecase.NewAuthUsecase(userRepo, tokenRepo, &cfg.JWT, &cfg.Google)
-	paperUsecase := usecase.NewPaperUsecase(paperRepo, arxivClient, pubmedClient)
+	paperUsecase := usecase.NewPaperUsecase(paperRepo, arxivClient, pubmedClient, s2Client)
 	libraryUsecase := usecase.NewLibraryUsecase(userPaperRepo, paperRepo)
 
 	// Initialize HTTP handler and middleware

@@ -10,7 +10,7 @@ export interface User {
 export interface Paper {
   id: string;
   external_id: string;
-  source: 'arxiv' | 'pubmed';
+  source: 'arxiv' | 'pubmed' | 'semanticscholar';
   title: string;
   abstract: string;
   authors: Author[];
@@ -18,6 +18,7 @@ export interface Paper {
   pdf_url: string;
   metadata: Record<string, unknown>;
   created_at: string;
+  citation_count?: number;
 }
 
 export interface Author {

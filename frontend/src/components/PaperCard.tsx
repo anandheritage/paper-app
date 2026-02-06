@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Users, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Calendar, Users, ExternalLink, Bookmark, BookmarkCheck, Quote } from 'lucide-react';
 import type { Paper } from '../types';
 
 interface PaperCardProps {
@@ -8,6 +8,20 @@ interface PaperCardProps {
   onBookmark?: (paperId: string) => void;
   onUnbookmark?: (paperId: string) => void;
   compact?: boolean;
+}
+
+function formatCitations(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
+}
+
+function getSourceLabel(source: string): string {
+  switch (source) {
+    case 'arxiv': return 'arXiv';
+    case 'pubmed': return 'PubMed';
+    default: return source;
+  }
 }
 
 export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmark, compact }: PaperCardProps) {
@@ -27,6 +41,9 @@ export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmar
     ? new Date(paper.published_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : null;
 
+  // Extract citation count from metadata
+  const citationCount = paper.citation_count ?? (paper.metadata?.citation_count as number | undefined);
+
   return (
     <article
       className="group relative bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-800 p-5 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-lg hover:shadow-primary-100/50 dark:hover:shadow-primary-900/20 transition-all duration-200 cursor-pointer"
@@ -34,19 +51,27 @@ export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmar
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          {/* Source badge */}
-          <div className="flex items-center gap-2 mb-2">
+          {/* Source badge + date + citations */}
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
               paper.source === 'arxiv'
                 ? 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'
-                : 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                : paper.source === 'pubmed'
+                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
             }`}>
-              {paper.source === 'arxiv' ? 'arXiv' : 'PubMed'}
+              {getSourceLabel(paper.source)}
             </span>
             {publishDate && (
               <span className="flex items-center gap-1 text-xs text-surface-500">
                 <Calendar className="h-3 w-3" />
                 {publishDate}
+              </span>
+            )}
+            {citationCount !== undefined && citationCount !== null && (
+              <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                <Quote className="h-3 w-3" />
+                {formatCitations(citationCount)} citations
               </span>
             )}
           </div>

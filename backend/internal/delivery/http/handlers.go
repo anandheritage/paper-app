@@ -195,6 +195,7 @@ func (h *Handler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	source := r.URL.Query().Get("source")
+	sortBy := r.URL.Query().Get("sort") // "relevance", "citations", "date"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
@@ -202,7 +203,7 @@ func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
 		limit = 20
 	}
 
-	result, err := h.paperUsecase.SearchPapers(query, source, limit, offset)
+	result, err := h.paperUsecase.SearchPapers(query, source, limit, offset, sortBy)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to search papers")
 		return
@@ -250,36 +251,49 @@ func (h *Handler) ProxyPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Proxy the PDF to avoid CORS issues
+	// Build candidate PDF URLs to try
+	candidates := []string{paper.PDFURL}
+	if paper.Source == "arxiv" {
+		// arXiv PDF URL patterns
+		candidates = []string{
+			fmt.Sprintf("https://arxiv.org/pdf/%s.pdf", paper.ExternalID),
+			fmt.Sprintf("https://arxiv.org/pdf/%s", paper.ExternalID),
+			paper.PDFURL,
+		}
+	}
+
+	// Proxy the PDF to avoid CORS issues — try each URL
 	client := &http.Client{
 		Timeout: 60 * time.Second,
 	}
 
-	pdfResp, err := client.Get(paper.PDFURL)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "Failed to fetch PDF")
+	var pdfResp *http.Response
+	for _, pdfURL := range candidates {
+		req, reqErr := http.NewRequest("GET", pdfURL, nil)
+		if reqErr != nil {
+			continue
+		}
+		// Set a realistic User-Agent — some servers block default Go UA
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; PaperApp/1.0; +https://paper-app.dev)")
+
+		resp, fetchErr := client.Do(req)
+		if fetchErr != nil {
+			continue
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		if resp.StatusCode == http.StatusOK && (strings.Contains(contentType, "pdf") || strings.Contains(contentType, "octet-stream")) {
+			pdfResp = resp
+			break
+		}
+		resp.Body.Close()
+	}
+
+	if pdfResp == nil {
+		writeError(w, http.StatusBadGateway, "Failed to fetch PDF from source")
 		return
 	}
 	defer pdfResp.Body.Close()
-
-	if pdfResp.StatusCode != http.StatusOK {
-		// If the direct URL fails, try following redirects for arXiv
-		if paper.Source == "arxiv" && !strings.Contains(paper.PDFURL, ".pdf") {
-			pdfURL := fmt.Sprintf("https://arxiv.org/pdf/%s.pdf", paper.ExternalID)
-			pdfResp2, err := client.Get(pdfURL)
-			if err != nil {
-				writeError(w, http.StatusBadGateway, "Failed to fetch PDF")
-				return
-			}
-			defer pdfResp2.Body.Close()
-			pdfResp = pdfResp2
-		}
-
-		if pdfResp.StatusCode != http.StatusOK {
-			writeError(w, http.StatusBadGateway, "PDF source returned an error")
-			return
-		}
-	}
 
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s.pdf\"", paper.ExternalID))

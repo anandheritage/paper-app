@@ -2,8 +2,8 @@ import { api } from './client';
 import type { Paper, SearchResult, HTMLURLResponse } from '../types';
 
 export const papersApi = {
-  search(query: string, source?: string, limit = 20, offset = 0): Promise<SearchResult> {
-    return api.get('/api/v1/papers/search', { q: query, source: source || '', limit, offset });
+  search(query: string, source?: string, limit = 20, offset = 0, sort = 'relevance'): Promise<SearchResult> {
+    return api.get('/api/v1/papers/search', { q: query, source: source || '', limit, offset, sort });
   },
 
   getById(id: string): Promise<Paper> {

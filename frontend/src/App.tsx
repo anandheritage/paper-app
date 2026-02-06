@@ -32,7 +32,6 @@ function useHydration() {
 
   useEffect(() => {
     if (hydrated) return;
-    // Subscribe to finish event in case hydration hasn't completed yet
     const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
     return unsub;
   }, [hydrated]);
@@ -44,7 +43,6 @@ export default function App() {
   const hydrated = useHydration();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  // Wait for auth state to load from localStorage before rendering routes
   if (!hydrated) {
     return <LoadingScreen />;
   }
