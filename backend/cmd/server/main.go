@@ -22,8 +22,12 @@ import (
 )
 
 func main() {
+	fmt.Println("=== Paper App Backend Starting ===")
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	// Load configuration
 	cfg := config.Load()
+	log.Printf("Config loaded: PORT=%s, DB=%s", cfg.Server.Port, cfg.Database.URL[:40]+"...")
 
 	// Connect to PostgreSQL with retry
 	var pool *pgxpool.Pool
