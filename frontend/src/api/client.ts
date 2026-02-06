@@ -8,6 +8,9 @@ interface RequestOptions extends RequestInit {
 
 class ApiClient {
   private baseURL: string;
+  // Mutex for token refresh - prevents race condition when multiple
+  // requests get 401 simultaneously and all try to refresh
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor(baseURL: string) {
     this.baseURL = baseURL;
@@ -49,10 +52,16 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      // Try to refresh the token
+      // Skip refresh for auth endpoints to avoid loops
+      if (path.includes('/auth/login') || path.includes('/auth/register') || path.includes('/auth/google')) {
+        const errorBody = await response.json().catch(() => ({ error: 'Unauthorized' }));
+        throw new ApiError(response.status, errorBody.error || 'Unauthorized');
+      }
+
+      // Try to refresh the token (with mutex to prevent race condition)
       const refreshed = await this.tryRefresh();
       if (refreshed) {
-        // Retry the request
+        // Retry the request with new token
         const retryResponse = await fetch(url, {
           ...fetchOptions,
           headers: {
@@ -81,14 +90,30 @@ class ApiClient {
   }
 
   private async tryRefresh(): Promise<boolean> {
+    // If a refresh is already in progress, wait for it instead of making a new one
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
     const tokens = useAuthStore.getState().tokens;
     if (!tokens?.refresh_token) return false;
 
+    // Create the refresh promise so other concurrent 401 handlers can wait on it
+    this.refreshPromise = this.doRefresh(tokens.refresh_token);
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  private async doRefresh(refreshToken: string): Promise<boolean> {
     try {
       const response = await fetch(this.buildURL('/api/v1/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: tokens.refresh_token }),
+        body: JSON.stringify({ refresh_token: refreshToken }),
       });
 
       if (!response.ok) return false;

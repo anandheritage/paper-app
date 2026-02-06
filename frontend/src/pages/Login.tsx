@@ -11,7 +11,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { setAuth } = useAuthStore();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -21,9 +21,13 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await authApi.login(email, password);
-      setAuth(res.user, res.tokens);
-      toast.success('Welcome back!');
-      navigate('/');
+      if (res?.user && res?.tokens) {
+        setAuth(res.user, res.tokens);
+        toast.success('Welcome back!');
+        navigate('/', { replace: true });
+      } else {
+        toast.error('Unexpected response from server');
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Login failed';
       toast.error(message);
@@ -36,9 +40,13 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await authApi.googleLogin(accessToken);
-      setAuth(res.user, res.tokens);
-      toast.success('Welcome!');
-      navigate('/');
+      if (res?.user && res?.tokens) {
+        setAuth(res.user, res.tokens);
+        toast.success('Welcome!');
+        navigate('/', { replace: true });
+      } else {
+        toast.error('Unexpected response from server');
+      }
     } catch {
       toast.error('Google login failed');
     } finally {

@@ -1,11 +1,11 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Search, BookOpen, Library, Home, LogOut, Moon, Sun } from 'lucide-react';
+import { Search, BookOpen, Library, Home, LogOut, LogIn, Moon, Sun } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
 import { authApi } from '../api/auth';
 
 export default function Layout() {
-  const { user, tokens, logout } = useAuthStore();
+  const { user, tokens, isAuthenticated, logout } = useAuthStore();
   const { isDark, toggle } = useThemeStore();
   const navigate = useNavigate();
 
@@ -18,7 +18,7 @@ export default function Layout() {
       }
     }
     logout();
-    navigate('/login');
+    navigate('/');
   };
 
   const navItems = [
@@ -69,19 +69,32 @@ export default function Layout() {
               >
                 {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </button>
-              <div className="hidden sm:flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400">
-                <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-700 dark:text-primary-300 font-medium">
-                  {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || '?'}
-                </div>
-                <span className="max-w-[120px] truncate">{user?.name || user?.email}</span>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 rounded-lg text-surface-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400 transition-colors"
-                title="Log out"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
+
+              {isAuthenticated ? (
+                <>
+                  <div className="hidden sm:flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400">
+                    <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-700 dark:text-primary-300 font-medium">
+                      {user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || '?'}
+                    </div>
+                    <span className="max-w-[120px] truncate">{user?.name || user?.email}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 rounded-lg text-surface-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400 transition-colors"
+                    title="Log out"
+                  >
+                    <LogOut className="h-5 w-5" />
+                  </button>
+                </>
+              ) : (
+                <NavLink
+                  to="/login"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign in
+                </NavLink>
+              )}
             </div>
           </div>
         </div>
