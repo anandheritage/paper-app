@@ -309,19 +309,41 @@ func (h *Handler) GetPaperHTMLURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	htmlURL := ""
+	// Build candidate HTML URLs to try (in order of preference)
+	var candidates []string
 	switch paper.Source {
 	case "arxiv":
-		// arXiv now serves HTML directly (preferred over ar5iv which is often down)
-		htmlURL = fmt.Sprintf("https://arxiv.org/html/%s", paper.ExternalID)
+		// Try arxiv.org/html first (official, newer), then ar5iv as fallback
+		candidates = append(candidates,
+			fmt.Sprintf("https://arxiv.org/html/%s", paper.ExternalID),
+			fmt.Sprintf("https://ar5iv.labs.arxiv.org/html/%s", paper.ExternalID),
+		)
 	case "pubmed":
-		// Try to get PMC ID from metadata
 		if paper.Metadata != nil {
 			var metadata map[string]interface{}
 			if err := json.Unmarshal(paper.Metadata, &metadata); err == nil {
 				if pmcID, ok := metadata["pmc_id"].(string); ok && pmcID != "" {
-					htmlURL = fmt.Sprintf("https://www.ncbi.nlm.nih.gov/pmc/articles/%s/", pmcID)
+					candidates = append(candidates, fmt.Sprintf("https://www.ncbi.nlm.nih.gov/pmc/articles/%s/", pmcID))
 				}
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		writeError(w, http.StatusNotFound, "HTML version not available for this paper")
+		return
+	}
+
+	// Check which URL is actually accessible (HEAD request with short timeout)
+	client := &http.Client{Timeout: 5 * time.Second}
+	htmlURL := ""
+	for _, url := range candidates {
+		resp, err := client.Head(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+				htmlURL = url
+				break
 			}
 		}
 	}

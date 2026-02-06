@@ -59,12 +59,20 @@ export default function Reader() {
     }
   }, [userPaper]);
 
-  // Fetch HTML URL
+  // Fetch HTML URL (backend verifies availability before returning)
   useEffect(() => {
     if (id) {
       papersApi.getHtmlUrl(id)
-        .then((res) => setHtmlUrl(res.html_url))
+        .then((res) => {
+          if (res.html_url) {
+            setHtmlUrl(res.html_url);
+          } else {
+            setHtmlError(true);
+            setViewMode('pdf');
+          }
+        })
         .catch(() => {
+          // 404 = HTML version not available for this paper
           setHtmlError(true);
           setViewMode('pdf');
         });
