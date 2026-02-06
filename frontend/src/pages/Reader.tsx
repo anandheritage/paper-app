@@ -242,7 +242,7 @@ export default function Reader() {
               {paper?.title || 'Loading...'}
             </h1>
             <p className="text-xs text-surface-500">
-              {paper?.source === 'arxiv' ? 'arXiv' : paper?.source === 'pubmed' ? 'PubMed' : paper?.source} &middot; {paper?.external_id}
+              {paper?.source === 'arxiv' ? 'arXiv' : paper?.source === 'pubmed' ? 'PubMed' : 'Paper'} &middot; {paper?.external_id}
             </p>
           </div>
         </div>

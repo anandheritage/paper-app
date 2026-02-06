@@ -97,7 +97,7 @@ export default function Search() {
       <div>
         <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Search Papers</h1>
         <p className="text-surface-500 dark:text-surface-400 mt-1">
-          Discover research papers from arXiv, PubMed and Semantic Scholar
+          Discover research papers from arXiv, PubMed, and more — powered by OpenAlex
         </p>
       </div>
 
@@ -247,7 +247,7 @@ export default function Search() {
           <SearchIcon className="h-16 w-16 mx-auto text-surface-300 dark:text-surface-700 mb-4" />
           <h3 className="text-lg font-medium text-surface-900 dark:text-surface-100 mb-1">Search academic papers</h3>
           <p className="text-surface-500 dark:text-surface-400">
-            Enter keywords to search across arXiv, PubMed and Semantic Scholar
+            Enter keywords to search across arXiv, PubMed, and 250M+ academic papers
           </p>
         </div>
       )}

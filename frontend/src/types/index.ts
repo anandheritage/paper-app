@@ -10,7 +10,7 @@ export interface User {
 export interface Paper {
   id: string;
   external_id: string;
-  source: 'arxiv' | 'pubmed' | 'semanticscholar';
+  source: 'arxiv' | 'pubmed' | 'openalex';
   title: string;
   abstract: string;
   authors: Author[];

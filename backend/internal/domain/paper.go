@@ -17,6 +17,7 @@ type Paper struct {
 	PublishedDate *time.Time      `json:"published_date,omitempty"`
 	PDFURL        string          `json:"pdf_url,omitempty"`
 	Metadata      json.RawMessage `json:"metadata,omitempty"`
+	CitationCount int             `json:"citation_count"`
 	CreatedAt     time.Time       `json:"created_at"`
 }
 

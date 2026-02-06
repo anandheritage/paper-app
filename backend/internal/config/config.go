@@ -13,6 +13,11 @@ type Config struct {
 	JWT      JWTConfig
 	Google   GoogleConfig
 	CORS     CORSConfig
+	OpenAlex OpenAlexConfig
+}
+
+type OpenAlexConfig struct {
+	Email string // Optional email for OpenAlex polite pool (faster responses)
 }
 
 type ServerConfig struct {
@@ -61,6 +66,9 @@ func Load() *Config {
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: getSliceEnv("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		},
+		OpenAlex: OpenAlexConfig{
+			Email: getEnv("OPENALEX_EMAIL", ""),
 		},
 	}
 }

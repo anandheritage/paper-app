@@ -24,15 +24,19 @@ func (r *PaperRepository) Create(paper *domain.Paper) error {
 	defer cancel()
 
 	query := `
-		INSERT INTO papers (id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO papers (id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, citation_count, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (external_id) DO UPDATE SET
 			title = EXCLUDED.title,
 			abstract = EXCLUDED.abstract,
 			authors = EXCLUDED.authors,
 			published_date = EXCLUDED.published_date,
 			pdf_url = EXCLUDED.pdf_url,
-			metadata = EXCLUDED.metadata
+			metadata = EXCLUDED.metadata,
+			citation_count = CASE
+				WHEN EXCLUDED.citation_count > papers.citation_count THEN EXCLUDED.citation_count
+				ELSE papers.citation_count
+			END
 		RETURNING id
 	`
 
@@ -51,6 +55,7 @@ func (r *PaperRepository) Create(paper *domain.Paper) error {
 		paper.PublishedDate,
 		paper.PDFURL,
 		paper.Metadata,
+		paper.CitationCount,
 		paper.CreatedAt,
 	).Scan(&paper.ID)
 
@@ -62,7 +67,7 @@ func (r *PaperRepository) GetByID(id uuid.UUID) (*domain.Paper, error) {
 	defer cancel()
 
 	query := `
-		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, created_at
+		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, COALESCE(citation_count, 0), created_at
 		FROM papers WHERE id = $1
 	`
 
@@ -77,6 +82,7 @@ func (r *PaperRepository) GetByID(id uuid.UUID) (*domain.Paper, error) {
 		&paper.PublishedDate,
 		&paper.PDFURL,
 		&paper.Metadata,
+		&paper.CitationCount,
 		&paper.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -93,7 +99,7 @@ func (r *PaperRepository) GetByExternalID(externalID string) (*domain.Paper, err
 	defer cancel()
 
 	query := `
-		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, created_at
+		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, COALESCE(citation_count, 0), created_at
 		FROM papers WHERE external_id = $1
 	`
 
@@ -108,6 +114,7 @@ func (r *PaperRepository) GetByExternalID(externalID string) (*domain.Paper, err
 		&paper.PublishedDate,
 		&paper.PDFURL,
 		&paper.Metadata,
+		&paper.CitationCount,
 		&paper.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -125,7 +132,7 @@ func (r *PaperRepository) Search(query string, source string, limit, offset int)
 
 	// Use PostgreSQL full-text search with tsvector
 	baseQuery := `
-		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, created_at
+		SELECT id, external_id, source, title, abstract, authors, published_date, pdf_url, metadata, COALESCE(citation_count, 0), created_at
 		FROM papers
 		WHERE ($1 = '' OR search_vector @@ plainto_tsquery('english', $1) OR title ILIKE '%' || $1 || '%')
 		AND ($2 = '' OR source = $2)
@@ -134,6 +141,7 @@ func (r *PaperRepository) Search(query string, source string, limit, offset int)
 				THEN ts_rank(search_vector, plainto_tsquery('english', $1))
 				ELSE 0
 			END DESC,
+			citation_count DESC,
 			created_at DESC
 		LIMIT $3 OFFSET $4
 	`
@@ -170,6 +178,7 @@ func (r *PaperRepository) Search(query string, source string, limit, offset int)
 			&paper.PublishedDate,
 			&paper.PDFURL,
 			&paper.Metadata,
+			&paper.CitationCount,
 			&paper.CreatedAt,
 		)
 		if err != nil {

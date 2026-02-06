@@ -6,23 +6,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/paper-app/backend/internal/domain"
 	"github.com/paper-app/backend/pkg/arxiv"
+	"github.com/paper-app/backend/pkg/openalex"
 	"github.com/paper-app/backend/pkg/pubmed"
-	"github.com/paper-app/backend/pkg/semanticscholar"
 )
 
 type PaperUsecase struct {
-	paperRepo       domain.PaperRepository
-	arxiv           *arxiv.Client
-	pubmed          *pubmed.Client
-	semanticScholar *semanticscholar.Client
+	paperRepo domain.PaperRepository
+	arxiv     *arxiv.Client
+	pubmed    *pubmed.Client
+	openalex  *openalex.Client
 }
 
-func NewPaperUsecase(paperRepo domain.PaperRepository, arxivClient *arxiv.Client, pubmedClient *pubmed.Client, s2Client *semanticscholar.Client) *PaperUsecase {
+func NewPaperUsecase(paperRepo domain.PaperRepository, arxivClient *arxiv.Client, pubmedClient *pubmed.Client, openalexClient *openalex.Client) *PaperUsecase {
 	return &PaperUsecase{
-		paperRepo:       paperRepo,
-		arxiv:           arxivClient,
-		pubmed:          pubmedClient,
-		semanticScholar: s2Client,
+		paperRepo: paperRepo,
+		arxiv:     arxivClient,
+		pubmed:    pubmedClient,
+		openalex:  openalexClient,
 	}
 }
 
@@ -34,20 +34,42 @@ type SearchResult struct {
 }
 
 func (u *PaperUsecase) SearchPapers(query, source string, limit, offset int, sort string) (*SearchResult, error) {
-	var papers []*domain.Paper
-	var total int
-
 	if limit <= 0 {
 		limit = 20
 	}
 	if limit > 100 {
 		limit = 100
 	}
-
-	// Normalize sort parameter
 	if sort == "" {
 		sort = "relevance"
 	}
+
+	// Route all searches through OpenAlex first (best relevance + citation data).
+	// For "pubmed" source, we still try OpenAlex then fall back to PubMed API.
+	results, err := u.openalex.Search(query, source, sort, limit, offset)
+	if err == nil {
+		// Cache papers in database
+		for _, paper := range results.Papers {
+			u.paperRepo.Create(paper)
+		}
+
+		return &SearchResult{
+			Papers: results.Papers,
+			Total:  results.TotalResults,
+			Offset: offset,
+			Limit:  limit,
+		}, nil
+	}
+
+	// OpenAlex failed — fall back to individual APIs
+	log.Printf("OpenAlex search failed, falling back to individual APIs: %v", err)
+	return u.fallbackSearch(query, source, limit, offset)
+}
+
+// fallbackSearch uses arXiv and/or PubMed APIs directly when OpenAlex is unavailable
+func (u *PaperUsecase) fallbackSearch(query, source string, limit, offset int) (*SearchResult, error) {
+	var papers []*domain.Paper
+	var total int
 
 	switch source {
 	case "arxiv":
@@ -65,60 +87,22 @@ func (u *PaperUsecase) SearchPapers(query, source string, limit, offset int, sor
 		papers = results.Papers
 		total = results.TotalResults
 	default:
-		// Use Semantic Scholar as the primary "all sources" search
-		// It indexes both arXiv and PubMed, and provides citation counts
-		s2Sort := ""
-		switch sort {
-		case "citations":
-			s2Sort = "citationCount"
-		case "date":
-			s2Sort = "publicationDate"
-		default:
-			s2Sort = "" // relevance
+		// Search both sources, combine results
+		arxivResults, arxivErr := u.arxiv.Search(query, limit/2, offset/2)
+		pubmedResults, pubmedErr := u.pubmed.Search(query, limit/2, offset/2)
+
+		if arxivErr == nil {
+			papers = append(papers, arxivResults.Papers...)
+			total += arxivResults.TotalResults
+		}
+		if pubmedErr == nil {
+			papers = append(papers, pubmedResults.Papers...)
+			total += pubmedResults.TotalResults
 		}
 
-		results, err := u.semanticScholar.Search(query, limit, offset, s2Sort)
-		if err != nil {
-			// Fallback to arXiv + PubMed if Semantic Scholar fails
-			log.Printf("Semantic Scholar failed, falling back: %v", err)
-			return u.fallbackSearch(query, limit, offset)
+		if arxivErr != nil && pubmedErr != nil {
+			return nil, arxivErr
 		}
-		papers = results.Papers
-		total = results.TotalResults
-	}
-
-	// Cache papers in database
-	for _, paper := range papers {
-		u.paperRepo.Create(paper)
-	}
-
-	return &SearchResult{
-		Papers: papers,
-		Total:  total,
-		Offset: offset,
-		Limit:  limit,
-	}, nil
-}
-
-// fallbackSearch uses arXiv + PubMed when Semantic Scholar is unavailable
-func (u *PaperUsecase) fallbackSearch(query string, limit, offset int) (*SearchResult, error) {
-	var papers []*domain.Paper
-	var total int
-
-	arxivResults, arxivErr := u.arxiv.Search(query, limit/2, offset/2)
-	pubmedResults, pubmedErr := u.pubmed.Search(query, limit/2, offset/2)
-
-	if arxivErr == nil {
-		papers = append(papers, arxivResults.Papers...)
-		total += arxivResults.TotalResults
-	}
-	if pubmedErr == nil {
-		papers = append(papers, pubmedResults.Papers...)
-		total += pubmedResults.TotalResults
-	}
-
-	if arxivErr != nil && pubmedErr != nil {
-		return nil, arxivErr
 	}
 
 	// Cache papers in database

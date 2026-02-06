@@ -18,8 +18,8 @@ import (
 	"github.com/paper-app/backend/internal/repository/postgres"
 	"github.com/paper-app/backend/internal/usecase"
 	"github.com/paper-app/backend/pkg/arxiv"
+	"github.com/paper-app/backend/pkg/openalex"
 	"github.com/paper-app/backend/pkg/pubmed"
-	"github.com/paper-app/backend/pkg/semanticscholar"
 )
 
 func main() {
@@ -65,11 +65,11 @@ func main() {
 	// Initialize external API clients
 	arxivClient := arxiv.NewClient()
 	pubmedClient := pubmed.NewClient()
-	s2Client := semanticscholar.NewClient()
+	openalexClient := openalex.NewClient(cfg.OpenAlex.Email)
 
 	// Initialize usecases
 	authUsecase := usecase.NewAuthUsecase(userRepo, tokenRepo, &cfg.JWT, &cfg.Google)
-	paperUsecase := usecase.NewPaperUsecase(paperRepo, arxivClient, pubmedClient, s2Client)
+	paperUsecase := usecase.NewPaperUsecase(paperRepo, arxivClient, pubmedClient, openalexClient)
 	libraryUsecase := usecase.NewLibraryUsecase(userPaperRepo, paperRepo)
 
 	// Initialize HTTP handler and middleware
