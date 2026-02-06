@@ -21,5 +21,4 @@ COPY --from=builder /server .
 
 EXPOSE 8080
 
-# Use shell form so we get logs even if binary crashes
-CMD sh -c "echo 'Container starting...' && ls -la /app/ && echo 'Running server...' && exec /app/server"
+CMD ["./server"]
