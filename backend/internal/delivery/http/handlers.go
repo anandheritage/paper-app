@@ -1,0 +1,521 @@
+package http
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/paper-app/backend/internal/middleware"
+	"github.com/paper-app/backend/internal/usecase"
+)
+
+type Handler struct {
+	authUsecase    *usecase.AuthUsecase
+	paperUsecase   *usecase.PaperUsecase
+	libraryUsecase *usecase.LibraryUsecase
+}
+
+func NewHandler(auth *usecase.AuthUsecase, paper *usecase.PaperUsecase, library *usecase.LibraryUsecase) *Handler {
+	return &Handler{
+		authUsecase:    auth,
+		paperUsecase:   paper,
+		libraryUsecase: library,
+	}
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, errorResponse{Error: message})
+}
+
+// Auth handlers
+
+type registerRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Name     string `json:"name"`
+}
+
+type authResponse struct {
+	User   interface{} `json:"user"`
+	Tokens interface{} `json:"tokens"`
+}
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req registerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		writeError(w, http.StatusBadRequest, "Email and password are required")
+		return
+	}
+
+	user, tokens, err := h.authUsecase.Register(req.Email, req.Password, req.Name)
+	if err == usecase.ErrEmailExists {
+		writeError(w, http.StatusConflict, "Email already exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to register user")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, authResponse{User: user, Tokens: tokens})
+}
+
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	user, tokens, err := h.authUsecase.Login(req.Email, req.Password)
+	if err == usecase.ErrInvalidCredentials {
+		writeError(w, http.StatusUnauthorized, "Invalid email or password")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to login")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, authResponse{User: user, Tokens: tokens})
+}
+
+type googleLoginRequest struct {
+	AccessToken string `json:"access_token"`
+}
+
+func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	var req googleLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.AccessToken == "" {
+		writeError(w, http.StatusBadRequest, "Access token is required")
+		return
+	}
+
+	user, tokens, err := h.authUsecase.GoogleLogin(req.AccessToken)
+	if err == usecase.ErrInvalidGoogleToken {
+		writeError(w, http.StatusUnauthorized, "Invalid Google token")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to authenticate with Google")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, authResponse{User: user, Tokens: tokens})
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	var req refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	tokens, err := h.authUsecase.RefreshToken(req.RefreshToken)
+	if err == usecase.ErrInvalidToken || err == usecase.ErrTokenExpired {
+		writeError(w, http.StatusUnauthorized, "Invalid or expired refresh token")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to refresh token")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, tokens)
+}
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	var req refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	h.authUsecase.Logout(req.RefreshToken)
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
+}
+
+func (h *Handler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	user, err := h.authUsecase.GetUserByID(userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get user")
+		return
+	}
+	if user == nil {
+		writeError(w, http.StatusNotFound, "User not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, user)
+}
+
+// Paper handlers
+
+func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	source := r.URL.Query().Get("source")
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if limit == 0 {
+		limit = 20
+	}
+
+	result, err := h.paperUsecase.SearchPapers(query, source, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to search papers")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) GetPaper(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	paper, err := h.paperUsecase.GetPaper(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get paper")
+		return
+	}
+	if paper == nil {
+		writeError(w, http.StatusNotFound, "Paper not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, paper)
+}
+
+func (h *Handler) ProxyPDF(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	paper, err := h.paperUsecase.GetPaper(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get paper")
+		return
+	}
+	if paper == nil || paper.PDFURL == "" {
+		writeError(w, http.StatusNotFound, "PDF not found")
+		return
+	}
+
+	// Proxy the PDF to avoid CORS issues
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+
+	pdfResp, err := client.Get(paper.PDFURL)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "Failed to fetch PDF")
+		return
+	}
+	defer pdfResp.Body.Close()
+
+	if pdfResp.StatusCode != http.StatusOK {
+		// If the direct URL fails, try following redirects for arXiv
+		if paper.Source == "arxiv" && !strings.Contains(paper.PDFURL, ".pdf") {
+			pdfURL := fmt.Sprintf("https://arxiv.org/pdf/%s.pdf", paper.ExternalID)
+			pdfResp2, err := client.Get(pdfURL)
+			if err != nil {
+				writeError(w, http.StatusBadGateway, "Failed to fetch PDF")
+				return
+			}
+			defer pdfResp2.Body.Close()
+			pdfResp = pdfResp2
+		}
+
+		if pdfResp.StatusCode != http.StatusOK {
+			writeError(w, http.StatusBadGateway, "PDF source returned an error")
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s.pdf\"", paper.ExternalID))
+	if pdfResp.ContentLength > 0 {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", pdfResp.ContentLength))
+	}
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, pdfResp.Body)
+}
+
+func (h *Handler) GetPaperHTMLURL(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	paper, err := h.paperUsecase.GetPaper(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get paper")
+		return
+	}
+	if paper == nil {
+		writeError(w, http.StatusNotFound, "Paper not found")
+		return
+	}
+
+	htmlURL := ""
+	switch paper.Source {
+	case "arxiv":
+		htmlURL = fmt.Sprintf("https://ar5iv.labs.arxiv.org/html/%s", paper.ExternalID)
+	case "pubmed":
+		// Try to get PMC ID from metadata
+		if paper.Metadata != nil {
+			var metadata map[string]interface{}
+			if err := json.Unmarshal(paper.Metadata, &metadata); err == nil {
+				if pmcID, ok := metadata["pmc_id"].(string); ok && pmcID != "" {
+					htmlURL = fmt.Sprintf("https://www.ncbi.nlm.nih.gov/pmc/articles/%s/", pmcID)
+				}
+			}
+		}
+	}
+
+	if htmlURL == "" {
+		writeError(w, http.StatusNotFound, "HTML version not available for this paper")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"html_url": htmlURL,
+		"source":   paper.Source,
+	})
+}
+
+// Library handlers
+
+func (h *Handler) GetLibrary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	status := r.URL.Query().Get("status")
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	result, err := h.libraryUsecase.GetLibrary(userID, status, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get library")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) SaveToLibrary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	paperIDStr := chi.URLParam(r, "paperId")
+	paperID, err := uuid.Parse(paperIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	userPaper, err := h.libraryUsecase.SavePaper(userID, paperID)
+	if err == usecase.ErrPaperNotFound {
+		writeError(w, http.StatusNotFound, "Paper not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save paper")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, userPaper)
+}
+
+func (h *Handler) RemoveFromLibrary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	paperIDStr := chi.URLParam(r, "paperId")
+	paperID, err := uuid.Parse(paperIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	err = h.libraryUsecase.RemovePaper(userID, paperID)
+	if err == usecase.ErrPaperNotInLibrary {
+		writeError(w, http.StatusNotFound, "Paper not in library")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to remove paper")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) UpdateLibraryPaper(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	paperIDStr := chi.URLParam(r, "paperId")
+	paperID, err := uuid.Parse(paperIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	var input usecase.UpdatePaperInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	userPaper, err := h.libraryUsecase.UpdatePaper(userID, paperID, &input)
+	if err == usecase.ErrPaperNotInLibrary {
+		writeError(w, http.StatusNotFound, "Paper not in library")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update paper")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, userPaper)
+}
+
+// Bookmark handlers
+
+func (h *Handler) GetBookmarks(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	result, err := h.libraryUsecase.GetBookmarks(userID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get bookmarks")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) BookmarkPaper(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	paperIDStr := chi.URLParam(r, "paperId")
+	paperID, err := uuid.Parse(paperIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	userPaper, err := h.libraryUsecase.BookmarkPaper(userID, paperID)
+	if err == usecase.ErrPaperNotFound {
+		writeError(w, http.StatusNotFound, "Paper not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to bookmark paper")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, userPaper)
+}
+
+func (h *Handler) UnbookmarkPaper(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	paperIDStr := chi.URLParam(r, "paperId")
+	paperID, err := uuid.Parse(paperIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		return
+	}
+
+	err = h.libraryUsecase.UnbookmarkPaper(userID, paperID)
+	if err == usecase.ErrPaperNotInLibrary {
+		writeError(w, http.StatusNotFound, "Paper not in library")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to unbookmark paper")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
