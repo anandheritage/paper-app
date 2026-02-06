@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
 
 function AppWrapper({ children }: { children: React.ReactNode }) {
   if (googleClientId) {
