@@ -44,39 +44,52 @@ export default function PaperDetail() {
     enabled: isAuthenticated,
   });
 
-  // Match by paper_id (PG UUID) OR paper.external_id (for papers opened from search with corpusid)
+  // Match library entry by multiple ID formats:
+  //  - paper_id (PG UUID)
+  //  - up.paper.external_id matches the URL id
+  //  - up.paper.id matches the URL id
+  //  - Cross-match via external_id (e.g. paper from OpenSearch has corpus id in URL but arXiv external_id matches)
   const userPaper = libraryData?.papers?.find(
-    (up) => up.paper_id === id || up.paper?.external_id === id || up.paper?.id === id
+    (up) =>
+      up.paper_id === id ||
+      up.paper?.external_id === id ||
+      up.paper?.id === id ||
+      (paper?.external_id && up.paper?.external_id === paper.external_id)
   );
   const isSaved = !!userPaper;
   const isBookmarked = userPaper?.is_bookmarked ?? false;
 
-  // Auto-set status to "reading" when a saved paper is viewed,
-  // and update last_read_at for papers already in "reading" status.
-  const hasAutoMarkedRef = useRef(false);
-  const lastAutoMarkedIdRef = useRef<string | undefined>(undefined);
+  // Auto-save to library as "reading" when viewing a paper detail page.
+  // Fires once per paper id, after both paper and libraryData have loaded.
+  const hasAutoSavedRef = useRef(false);
+  const lastAutoSavedIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (lastAutoMarkedIdRef.current !== id) {
-      hasAutoMarkedRef.current = false;
-      lastAutoMarkedIdRef.current = id;
+    if (lastAutoSavedIdRef.current !== id) {
+      hasAutoSavedRef.current = false;
+      lastAutoSavedIdRef.current = id;
     }
   }, [id]);
   useEffect(() => {
-    if (!userPaper || hasAutoMarkedRef.current) return;
-    hasAutoMarkedRef.current = true;
+    if (!isAuthenticated || !paper || hasAutoSavedRef.current) return;
+    // Wait for library data to load before deciding
+    if (libraryData === undefined) return;
+    hasAutoSavedRef.current = true;
 
-    if (userPaper.status === 'saved') {
-      // Transition saved → reading (also updates last_read_at on backend)
-      libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
+    if (userPaper) {
+      // Already in library — update last_read_at
+      if (userPaper.status === 'saved' || userPaper.status === 'reading') {
+        libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
+          .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
+          .catch(console.error);
+      }
+    } else {
+      // NOT in library — auto-save and mark as reading
+      libraryApi.savePaper(paper.id)
+        .then((saved) => libraryApi.updatePaper(saved.paper_id, { status: 'reading' }))
         .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
-        .catch(() => {});
-    } else if (userPaper.status === 'reading') {
-      // Paper already in reading — touch last_read_at by re-sending current status
-      libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
-        .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
-        .catch(() => {});
+        .catch(console.error);
     }
-  }, [userPaper?.paper_id, userPaper?.status, queryClient]);
+  }, [isAuthenticated, paper?.id, paper?.external_id, userPaper?.paper_id, userPaper?.status, libraryData, queryClient]);
 
   const saveMutation = useMutation({
     mutationFn: libraryApi.savePaper,
@@ -131,24 +144,13 @@ export default function PaperDetail() {
     else bookmarkMutation.mutate(paperId);
   };
 
-  // Auto-save to library as "reading" when the user clicks Read PDF / Read HTML
+  // Touch last_read_at when clicking Read PDF / Read HTML
   const handleReadClick = () => {
     if (!isAuthenticated || !paper) return;
-    if (isSaved) {
-      // Already in library — just touch last_read_at
-      if (userPaper && userPaper.status !== 'finished') {
-        libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
-          .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
-          .catch(() => {});
-      }
-    } else {
-      // Not in library — save it first, then mark as reading
-      libraryApi.savePaper(paper.id)
-        .then((saved) => {
-          return libraryApi.updatePaper(saved.paper_id, { status: 'reading' });
-        })
+    if (userPaper && userPaper.status !== 'finished') {
+      libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
         .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
-        .catch(() => {});
+        .catch(console.error);
     }
   };
 
