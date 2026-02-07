@@ -407,7 +407,7 @@ export default function PaperDetail() {
           {/* WhatsApp Share */}
           <a
             href={`https://wa.me/?text=${encodeURIComponent(
-              `${paper.title}\n\n${isArxiv && paper.external_id ? getArxivAbsUrl(paper.external_id) : paper.s2_url || `${window.location.origin}/paper/${paper.id}`}`
+              `${paper.title}\n\nhttps://dapapers.com/paper/${paper.id}`
             )}`}
             target="_blank"
             rel="noopener noreferrer"
