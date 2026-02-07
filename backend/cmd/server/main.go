@@ -29,8 +29,9 @@ func main() {
 	cfg := config.Load()
 	log.Printf("Server configured on port %s", cfg.Server.Port)
 
-	// Connect to PostgreSQL with retry
+	// Connect to PostgreSQL with retry (non-fatal: server starts even if DB is unavailable)
 	var pool *pgxpool.Pool
+	dbConnected := false
 	for attempt := 1; attempt <= 5; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		var err error
@@ -39,9 +40,11 @@ func main() {
 			if pingErr := pool.Ping(ctx); pingErr == nil {
 				cancel()
 				log.Println("Connected to PostgreSQL")
+				dbConnected = true
 				break
 			} else {
 				pool.Close()
+				pool = nil
 				log.Printf("Attempt %d: Failed to ping database: %v", attempt, pingErr)
 			}
 		} else {
@@ -49,11 +52,17 @@ func main() {
 		}
 		cancel()
 		if attempt == 5 {
-			log.Fatalf("Could not connect to database after 5 attempts")
+			log.Println("WARNING: Could not connect to database after 5 attempts — starting server anyway")
+			// Create pool without verifying connectivity; it will reconnect when DB is available
+			pool, _ = pgxpool.New(context.Background(), cfg.Database.URL)
+		} else {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
 		}
-		time.Sleep(time.Duration(attempt) * 2 * time.Second)
 	}
-	defer pool.Close()
+	if pool != nil {
+		defer pool.Close()
+	}
+	_ = dbConnected
 
 	// Initialize repositories
 	userRepo := postgres.NewUserRepository(pool)
