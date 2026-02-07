@@ -57,7 +57,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
           <div className="flex items-center gap-2">
             <BookOpen className="h-7 w-7 text-primary-600" />
-            <span className="text-xl font-bold tracking-tight text-surface-900 dark:text-surface-100">dapapers</span>
+            <span className="text-xl font-bold tracking-tight text-surface-900 dark:text-surface-100">Da Papers</span>
           </div>
           <button
             onClick={() => navigate('/login')}
@@ -210,7 +210,7 @@ export default function Landing() {
             Ready to streamline your research?
           </h2>
           <p className="mt-4 text-lg text-surface-500 dark:text-surface-400">
-            Join researchers who use dapapers to find, read, and organize academic papers. Free forever.
+            Join researchers who use Da Papers to find, read, and organize academic papers. Free forever.
           </p>
           <div className="mt-10">
             <button
@@ -232,7 +232,7 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-primary-600" />
-              <span className="font-semibold text-surface-900 dark:text-surface-100">dapapers</span>
+              <span className="font-semibold text-surface-900 dark:text-surface-100">Da Papers</span>
             </div>
             <p className="text-sm text-surface-400">
               Data from <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">Semantic Scholar</a> &amp; <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a>.
