@@ -199,16 +199,34 @@ func main() {
 		if totalPages == 0 {
 			totalPapers = resp.Meta.Count
 			log.Printf("Total arXiv papers in OpenAlex: %d", totalPapers)
-			log.Printf("Estimated pages: %d", (totalPapers+*perPage-1) / *perPage)
+			log.Printf("Estimated pages: %d", (totalPapers+*perPage-1)/ *perPage)
+		}
+
+		// DEBUG: Log first paper on each page to verify sort order
+		if len(resp.Results) > 0 && (totalPages < 3 || totalPages%100 == 0) {
+			first := resp.Results[0]
+			log.Printf("DEBUG Page %d first paper: cit=%d title=%q id=%s",
+				totalPages+1, first.CitedByCount, truncate(first.Title, 50), first.ID)
 		}
 
 		// Convert to PaperDocs
 		var docs []*opensearch.PaperDoc
+		skipped := 0
 		for i := range resp.Results {
 			doc := convertOAWork(&resp.Results[i])
 			if doc != nil {
 				docs = append(docs, doc)
+			} else {
+				skipped++
+				if totalPages < 3 {
+					log.Printf("DEBUG SKIPPED: title=%q cit=%d id=%s",
+						truncate(resp.Results[i].Title, 50), resp.Results[i].CitedByCount, resp.Results[i].ID)
+				}
 			}
+		}
+		if totalPages < 3 {
+			log.Printf("DEBUG Page %d: %d results, %d converted, %d skipped",
+				totalPages+1, len(resp.Results), len(docs), skipped)
 		}
 
 		// Bulk index in sub-batches
