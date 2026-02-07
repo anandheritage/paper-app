@@ -185,7 +185,8 @@ export default function Library() {
                     />
                   </div>
                 )}
-                <div className="absolute top-3 right-16">
+                {/* Status + remove controls - bottom-left to avoid overlapping PaperCard actions */}
+                <div className="absolute bottom-3 left-5 flex items-center gap-2 opacity-0 group-hover/item:opacity-100 transition-all">
                   <select
                     value={up.status}
                     onChange={(e) => {
@@ -193,33 +194,29 @@ export default function Library() {
                       updateStatusMutation.mutate({ paperId: up.paper_id, status: e.target.value });
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className={`text-xs font-medium px-2 py-0.5 rounded-md border-none cursor-pointer appearance-none pr-5 bg-no-repeat bg-right ${
-                      up.status === 'reading' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300' :
-                      up.status === 'finished' ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300' :
-                      'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400'
+                    className={`text-xs font-medium px-2 py-1 rounded-md border cursor-pointer ${
+                      up.status === 'reading' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800' :
+                      up.status === 'finished' ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800' :
+                      'bg-surface-100 text-surface-600 border-surface-200 dark:bg-surface-800 dark:text-surface-400 dark:border-surface-700'
                     }`}
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                      backgroundPosition: 'right 4px center',
-                    }}
                   >
                     <option value="saved">Saved</option>
                     <option value="reading">Reading</option>
                     <option value="finished">Finished</option>
                   </select>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm('Remove this paper from your library?')) {
+                        removeMutation.mutate(up.paper_id);
+                      }
+                    }}
+                    className="p-1.5 rounded-lg text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 transition-all"
+                    title="Remove from library"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm('Remove this paper from your library?')) {
-                      removeMutation.mutate(up.paper_id);
-                    }
-                  }}
-                  className="absolute bottom-3 right-3 p-1.5 rounded-lg text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 opacity-0 group-hover/item:opacity-100 transition-all"
-                  title="Remove from library"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
               </div>
             ))}
           </div>
@@ -227,7 +224,7 @@ export default function Library() {
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 pt-4">
               <button
-                onClick={() => setPage(Math.max(0, page - 1))}
+                onClick={() => { setPage(Math.max(0, page - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 disabled={page === 0}
                 className="px-4 py-2 rounded-lg text-sm font-medium border border-surface-300 dark:border-surface-700 disabled:opacity-50 transition-colors"
               >
@@ -237,7 +234,7 @@ export default function Library() {
                 Page {page + 1} of {totalPages}
               </span>
               <button
-                onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+                onClick={() => { setPage(Math.min(totalPages - 1, page + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                 disabled={page >= totalPages - 1}
                 className="px-4 py-2 rounded-lg text-sm font-medium border border-surface-300 dark:border-surface-700 disabled:opacity-50 transition-colors"
               >

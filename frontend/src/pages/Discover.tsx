@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, RefreshCw, Tag, Calendar, Users, Quote, FileText, BookOpen, Award } from 'lucide-react';
+import { Sparkles, RefreshCw, Tag, Calendar, Users, Quote, FileText, BookOpen, Award, LogIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
@@ -154,7 +154,6 @@ export default function Discover() {
   const saveMutation = useMutation({
     mutationFn: libraryApi.savePaper,
     onSuccess: () => {
-      toast.success('Saved to library');
       queryClient.invalidateQueries({ queryKey: ['library'] });
     },
     onError: () => toast.error('Failed to save'),
@@ -163,8 +162,9 @@ export default function Discover() {
   const bookmarkMutation = useMutation({
     mutationFn: libraryApi.bookmarkPaper,
     onSuccess: () => {
-      toast.success('Bookmarked');
+      toast.success('Saved & bookmarked');
       queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
+      queryClient.invalidateQueries({ queryKey: ['library'] });
     },
     onError: () => toast.error('Failed to bookmark'),
   });
@@ -174,8 +174,12 @@ export default function Discover() {
   };
 
   const handleBookmark = (id: string) => {
-    saveMutation.mutate(id);
-    bookmarkMutation.mutate(id);
+    // Chain: save first, then bookmark after save succeeds to avoid race condition
+    saveMutation.mutate(id, {
+      onSuccess: () => {
+        bookmarkMutation.mutate(id);
+      },
+    });
   };
 
   const paper = data?.paper_of_the_day;
@@ -189,9 +193,16 @@ export default function Discover() {
         <h2 className="text-xl font-semibold text-surface-900 dark:text-surface-100 mb-2">
           Sign in to get personalized suggestions
         </h2>
-        <p className="text-surface-500 dark:text-surface-400">
+        <p className="text-surface-500 dark:text-surface-400 mb-6">
           We'll suggest papers based on your reading interests
         </p>
+        <Link
+          to="/login"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-medium transition-colors"
+        >
+          <LogIn className="h-5 w-5" />
+          Sign in
+        </Link>
       </div>
     );
   }

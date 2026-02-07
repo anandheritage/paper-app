@@ -39,8 +39,8 @@ export default function PaperDetail() {
   });
 
   const { data: libraryData } = useQuery({
-    queryKey: ['library', ''],
-    queryFn: () => libraryApi.getLibrary('', 100, 0),
+    queryKey: ['library', '', 'all'],
+    queryFn: () => libraryApi.getLibrary('', 1000, 0),
     enabled: isAuthenticated,
   });
 
@@ -52,7 +52,15 @@ export default function PaperDetail() {
   const isBookmarked = userPaper?.is_bookmarked ?? false;
 
   // Auto-set status to "reading" when a saved paper is viewed
+  // Reset when paper id changes so it works across navigations
   const hasAutoMarkedRef = useRef(false);
+  const lastAutoMarkedIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (lastAutoMarkedIdRef.current !== id) {
+      hasAutoMarkedRef.current = false;
+      lastAutoMarkedIdRef.current = id;
+    }
+  }, [id]);
   useEffect(() => {
     if (userPaper && userPaper.status === 'saved' && !hasAutoMarkedRef.current) {
       hasAutoMarkedRef.current = true;
@@ -104,13 +112,15 @@ export default function PaperDetail() {
   };
 
   const handleRemove = () => {
-    removeMutation.mutate(paper!.id);
+    // Use the user_papers paper_id when available (correct PG UUID)
+    removeMutation.mutate(userPaper?.paper_id ?? paper!.id);
   };
 
   const handleBookmarkToggle = () => {
     if (!isAuthenticated) { toast.error('Sign in to bookmark papers'); return; }
-    if (isBookmarked) unbookmarkMutation.mutate(paper!.id);
-    else bookmarkMutation.mutate(paper!.id);
+    const paperId = userPaper?.paper_id ?? paper!.id;
+    if (isBookmarked) unbookmarkMutation.mutate(paperId);
+    else bookmarkMutation.mutate(paperId);
   };
 
   if (isLoading) {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, ArrowRight, BookOpen, Bookmark, Clock } from 'lucide-react';
+import { Search, ArrowRight, BookOpen, Bookmark, Archive } from 'lucide-react';
 import { libraryApi } from '../api/library';
 import { useAuthStore } from '../stores/authStore';
 import PaperCard from '../components/PaperCard';
@@ -102,7 +102,7 @@ export default function Dashboard() {
           </div>
           <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-800 p-4 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400">
-              <Clock className="h-6 w-6" />
+              <Archive className="h-6 w-6" />
             </div>
             <div>
               <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{savedPapers?.total ?? 0}</p>
