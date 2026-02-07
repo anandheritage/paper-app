@@ -144,7 +144,7 @@ export default function PaperDetail() {
     return (
       <div className="text-center py-16">
         <p className="text-surface-500">Paper not found</p>
-        <button onClick={() => navigate(-1)} className="mt-3 text-primary-600 hover:underline text-sm">
+        <button onClick={() => window.history.length > 2 ? navigate(-1) : navigate('/')} className="mt-3 text-primary-600 hover:underline text-sm">
           Go back
         </button>
       </div>
@@ -171,9 +171,9 @@ export default function PaperDetail() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Back button */}
+      {/* Back button — go back if there's history, otherwise go home */}
       <button
-        onClick={() => navigate(-1)}
+        onClick={() => window.history.length > 2 ? navigate(-1) : navigate('/')}
         className="flex items-center gap-1 text-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 mb-6 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
