@@ -115,7 +115,7 @@ func main() {
 		SELECT id, external_id, source, title, COALESCE(abstract, ''), authors,
 			published_date, updated_date, pdf_url, COALESCE(primary_category, ''),
 			categories, COALESCE(doi, ''), COALESCE(journal_ref, ''),
-			COALESCE(comments, ''), COALESCE(license, ''), COALESCE(citation_count, 0)
+			COALESCE(comments, ''), COALESCE(license, '')
 		FROM papers
 		WHERE title IS NOT NULL AND title != ''
 	`
@@ -173,12 +173,11 @@ func main() {
 			journalRef      string
 			comments        string
 			license         string
-			citationCount   int
 		)
 
 		if err := rows.Scan(&id, &externalID, &source, &title, &abstract, &authorsJSON,
 			&publishedDate, &updatedDate, &pdfURL, &primaryCategory,
-			&categories, &doi, &journalRef, &comments, &license, &citationCount); err != nil {
+			&categories, &doi, &journalRef, &comments, &license); err != nil {
 			log.Printf("WARN: Scan error: %v", err)
 			errors++
 			continue
@@ -192,7 +191,6 @@ func main() {
 			Abstract:        abstract,
 			PrimaryCategory: primaryCategory,
 			Categories:      categories,
-			CitationCount:   citationCount,
 			DOI:             doi,
 			JournalRef:      journalRef,
 			Comments:        comments,
