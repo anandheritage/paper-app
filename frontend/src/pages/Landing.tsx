@@ -235,7 +235,7 @@ export default function Landing() {
               <span className="font-semibold text-surface-900 dark:text-surface-100">Da Papers</span>
             </div>
             <p className="text-sm text-surface-400">
-              Data from <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a> &amp; <a href="https://openalex.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">OpenAlex</a>.
+              Data from <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a>.
             </p>
           </div>
         </div>
