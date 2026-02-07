@@ -858,6 +858,97 @@ func (c *Client) GetRandomPapers(ctx context.Context, categories []string, exclu
 	return papers, nil
 }
 
+// GetTopCitedDiverseFields returns the single most-cited paper from each of N distinct fields.
+// Uses a terms aggregation on primary_category with a top_hits sub-aggregation sorted by citation_count desc.
+func (c *Client) GetTopCitedDiverseFields(ctx context.Context, numFields int) ([]*PaperDoc, error) {
+	if numFields <= 0 {
+		numFields = 5
+	}
+
+	query := map[string]interface{}{
+		"size": 0,
+		"aggs": map[string]interface{}{
+			"by_field": map[string]interface{}{
+				"terms": map[string]interface{}{
+					"field": "primary_category",
+					"size":  numFields,
+					"order": map[string]interface{}{
+						"top_cit": "desc",
+					},
+				},
+				"aggs": map[string]interface{}{
+					"top_cit": map[string]interface{}{
+						"max": map[string]interface{}{
+							"field": "citation_count",
+						},
+					},
+					"top_paper": map[string]interface{}{
+						"top_hits": map[string]interface{}{
+							"size": 1,
+							"sort": []interface{}{
+								map[string]interface{}{
+									"citation_count": map[string]interface{}{"order": "desc"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	body, err := json.Marshal(query)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/%s/_search", c.cfg.Endpoint, c.cfg.Index)
+	resp, err := c.doRequest(ctx, "POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("top cited search failed (%d): %s", resp.StatusCode, string(respBody[:min(500, len(respBody))]))
+	}
+
+	var esResp struct {
+		Aggregations struct {
+			ByField struct {
+				Buckets []struct {
+					Key      string `json:"key"`
+					TopPaper struct {
+						Hits struct {
+							Hits []struct {
+								Source PaperDoc `json:"_source"`
+							} `json:"hits"`
+						} `json:"hits"`
+					} `json:"top_paper"`
+				} `json:"buckets"`
+			} `json:"by_field"`
+		} `json:"aggregations"`
+	}
+	if err := json.Unmarshal(respBody, &esResp); err != nil {
+		return nil, err
+	}
+
+	var papers []*PaperDoc
+	for _, bucket := range esResp.Aggregations.ByField.Buckets {
+		if len(bucket.TopPaper.Hits.Hits) > 0 {
+			doc := bucket.TopPaper.Hits.Hits[0].Source
+			papers = append(papers, &doc)
+		}
+	}
+
+	return papers, nil
+}
+
 // GetDocCount returns the total number of documents in the index.
 func (c *Client) GetDocCount(ctx context.Context) (int64, error) {
 	url := fmt.Sprintf("%s/%s/_count", c.cfg.Endpoint, c.cfg.Index)

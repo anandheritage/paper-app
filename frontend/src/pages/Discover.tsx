@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, RefreshCw, Tag, Calendar, Users, Quote, FileText, BookOpen, Award, LogIn } from 'lucide-react';
+import { Sparkles, RefreshCw, Tag, Calendar, Users, Quote, FileText, BookOpen, Award, LogIn, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
@@ -9,6 +9,11 @@ import { useAuthStore } from '../stores/authStore';
 import PaperCard from '../components/PaperCard';
 import { PaperDetailSkeleton } from '../components/Skeleton';
 import type { Paper } from '../types';
+
+function formatCitations(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return n.toLocaleString();
+}
 
 function HeroPaperCard({ paper }: { paper: Paper }) {
   const navigate = useNavigate();
@@ -139,6 +144,70 @@ function HeroPaperCard({ paper }: { paper: Paper }) {
   );
 }
 
+const medalColors = [
+  'from-amber-400 to-amber-600',   // #1 gold
+  'from-slate-300 to-slate-500',    // #2 silver
+  'from-orange-400 to-orange-600',  // #3 bronze
+  'from-primary-400 to-primary-600', // #4
+  'from-primary-400 to-primary-600', // #5
+];
+
+function TopCitedCard({ paper, rank }: { paper: Paper; rank: number }) {
+  const navigate = useNavigate();
+  const citations = paper.citation_count ?? 0;
+
+  const authors = Array.isArray(paper.authors)
+    ? paper.authors
+    : typeof paper.authors === 'string'
+    ? (() => { try { return JSON.parse(paper.authors); } catch { return []; } })()
+    : [];
+
+  const firstAuthor = authors.length > 0 ? authors[0].name : '';
+  const authorLabel = authors.length > 1
+    ? `${firstAuthor} +${authors.length - 1}`
+    : firstAuthor;
+
+  return (
+    <article
+      onClick={() => navigate(`/paper/${paper.id}`)}
+      className="group relative bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-800 p-4 cursor-pointer hover:shadow-lg hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-200 flex flex-col"
+    >
+      {/* Rank badge */}
+      <div className={`absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full bg-gradient-to-br ${medalColors[rank - 1] || medalColors[4]} text-white text-xs font-bold flex items-center justify-center shadow-md`}>
+        {rank}
+      </div>
+
+      {/* Field tag */}
+      {paper.primary_category && (
+        <span className="self-start inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 mb-2">
+          {paper.primary_category}
+        </span>
+      )}
+
+      {/* Title */}
+      <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 leading-snug line-clamp-3 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors flex-1">
+        {paper.title}
+      </h3>
+
+      {/* Author */}
+      {authorLabel && (
+        <p className="text-xs text-surface-500 dark:text-surface-400 mt-2 truncate">
+          {authorLabel}
+        </p>
+      )}
+
+      {/* Citation count */}
+      <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-surface-100 dark:border-surface-800">
+        <Quote className="h-3.5 w-3.5 text-amber-500" />
+        <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+          {formatCitations(citations)}
+        </span>
+        <span className="text-xs text-surface-400">citations</span>
+      </div>
+    </article>
+  );
+}
+
 export default function Discover() {
   const [seed, setSeed] = useState<string | undefined>();
   const queryClient = useQueryClient();
@@ -185,6 +254,7 @@ export default function Discover() {
   const paper = data?.paper_of_the_day;
   const suggestions = data?.suggestions ?? [];
   const categories = data?.based_on_categories ?? [];
+  const topCited = data?.top_cited ?? [];
 
   if (!isAuthenticated) {
     return (
@@ -267,6 +337,24 @@ export default function Discover() {
             Save some papers to your library first to get personalized suggestions
           </p>
         </div>
+      )}
+
+      {/* Top Cited of All Time */}
+      {topCited.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-4 flex items-center gap-2">
+            <Trophy className="h-5 w-5 text-amber-500" />
+            Top Cited of All Time
+          </h2>
+          <p className="text-sm text-surface-500 dark:text-surface-400 -mt-2 mb-4">
+            The most influential paper from each research field
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {topCited.map((p, idx) => (
+              <TopCitedCard key={p.id} paper={p} rank={idx + 1} />
+            ))}
+          </div>
+        </section>
       )}
 
       {/* More Suggestions */}

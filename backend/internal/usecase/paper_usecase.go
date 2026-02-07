@@ -223,6 +223,7 @@ type DiscoverResult struct {
 	PaperOfTheDay *opensearch.PaperDoc   `json:"paper_of_the_day"`
 	Suggestions   []*opensearch.PaperDoc `json:"suggestions"`
 	Categories    []string               `json:"based_on_categories"`
+	TopCited      []*opensearch.PaperDoc `json:"top_cited,omitempty"`
 }
 
 // Discover returns random paper suggestions based on user interest categories.
@@ -256,6 +257,15 @@ func (u *PaperUsecase) Discover(categories []string, excludeExternalIDs []string
 		if len(papers) > 1 {
 			result.Suggestions = papers[1:]
 		}
+	}
+
+	// Fetch top-cited papers of all time from diverse fields
+	topCited, err := u.osClient.GetTopCitedDiverseFields(ctx, 5)
+	if err != nil {
+		log.Printf("Failed to fetch top-cited papers: %v", err)
+		// Non-fatal — the section simply won't appear
+	} else {
+		result.TopCited = topCited
 	}
 
 	return result, nil

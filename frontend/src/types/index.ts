@@ -90,4 +90,5 @@ export interface DiscoverResult {
   paper_of_the_day: Paper | null;
   suggestions: Paper[];
   based_on_categories: string[];
+  top_cited?: Paper[];
 }
