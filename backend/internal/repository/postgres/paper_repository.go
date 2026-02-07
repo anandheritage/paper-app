@@ -294,6 +294,51 @@ func (r *PaperRepository) CountByCategory() ([]domain.CategoryCount, error) {
 	return counts, nil
 }
 
+// BackfillCategories fills primary_category and categories from metadata JSON (batched).
+func (r *PaperRepository) BackfillCategories() (int64, error) {
+	batchSize := 10000
+	var totalUpdated int64
+
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		res, err := r.db.Exec(ctx, `
+			UPDATE papers
+			SET
+				primary_category = metadata->'categories'->>0,
+				categories = (
+					SELECT ARRAY(
+						SELECT jsonb_array_elements_text(metadata->'categories')
+					)
+				)
+			WHERE id IN (
+				SELECT id FROM papers
+				WHERE (primary_category IS NULL OR primary_category = '')
+				  AND metadata IS NOT NULL
+				  AND metadata->'categories' IS NOT NULL
+				  AND jsonb_array_length(metadata->'categories') > 0
+				LIMIT $1
+			)
+		`, batchSize)
+		cancel()
+
+		if err != nil {
+			return totalUpdated, fmt.Errorf("batch failed after %d total: %w", totalUpdated, err)
+		}
+
+		affected := res.RowsAffected()
+		totalUpdated += affected
+		fmt.Printf("BACKFILL: batch %d rows (total: %d)\n", affected, totalUpdated)
+
+		if affected == 0 {
+			break
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return totalUpdated, nil
+}
+
 // StreamAll iterates over all papers in batches and calls fn for each batch.
 func (r *PaperRepository) StreamAll(ctx context.Context, batchSize int, fn func(papers []*domain.Paper) error) error {
 	offset := 0

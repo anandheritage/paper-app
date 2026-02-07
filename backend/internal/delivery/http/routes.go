@@ -55,6 +55,7 @@ func NewRouter(handler *Handler, authMiddleware *middleware.AuthMiddleware, allo
 			r.Get("/{id}", handler.GetPaper)
 		})
 
+
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware.Authenticate)

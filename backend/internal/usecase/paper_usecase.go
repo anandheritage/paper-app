@@ -214,6 +214,11 @@ func (u *PaperUsecase) GetGroupedCategories() (map[string][]domain.CategoryInfo,
 	return grouped, nil
 }
 
+// BackfillCategories populates primary_category and categories columns from metadata JSON.
+func (u *PaperUsecase) BackfillCategories() (int64, error) {
+	return u.paperRepo.BackfillCategories()
+}
+
 // ParseCategories extracts category IDs from a comma-separated string.
 func ParseCategories(s string) []string {
 	if s == "" {

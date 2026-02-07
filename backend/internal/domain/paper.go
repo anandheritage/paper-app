@@ -44,6 +44,7 @@ type PaperRepository interface {
 	Delete(id uuid.UUID) error
 	CountByCategory() ([]CategoryCount, error)
 	StreamAll(ctx context.Context, batchSize int, fn func(papers []*Paper) error) error
+	BackfillCategories() (int64, error)
 }
 
 // PaperSearcher handles search operations (OpenSearch).

@@ -103,6 +103,19 @@ func main() {
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
 
+	// Run one-time category backfill if BACKFILL_CATEGORIES=true
+	if os.Getenv("BACKFILL_CATEGORIES") == "true" {
+		go func() {
+			log.Println("BACKFILL: Starting category backfill in background...")
+			count, err := paperRepo.BackfillCategories()
+			if err != nil {
+				log.Printf("BACKFILL: Failed after %d rows: %v", count, err)
+			} else {
+				log.Printf("BACKFILL: Complete! Updated %d rows", count)
+			}
+		}()
+	}
+
 	// Start server in goroutine
 	go func() {
 		log.Printf("Server starting on port %s", cfg.Server.Port)

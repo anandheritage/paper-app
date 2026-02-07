@@ -232,6 +232,7 @@ func (h *Handler) GetGroupedCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, grouped)
 }
 
+
 func (h *Handler) GetPaper(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
