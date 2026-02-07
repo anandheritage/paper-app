@@ -143,11 +143,16 @@ func (u *LibraryUsecase) UpdatePaper(userID, paperID uuid.UUID, input *UpdatePap
 	}
 	if input.ReadingProgress != nil {
 		userPaper.ReadingProgress = *input.ReadingProgress
-		now := time.Now()
-		userPaper.LastReadAt = &now
 	}
 	if input.Notes != nil {
 		userPaper.Notes = *input.Notes
+	}
+
+	// Update last_read_at whenever the paper is in "reading" status
+	// (either just set or already was reading)
+	if userPaper.Status == domain.StatusReading {
+		now := time.Now()
+		userPaper.LastReadAt = &now
 	}
 
 	if err := u.userPaperRepo.Update(userPaper); err != nil {

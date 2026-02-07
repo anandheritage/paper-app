@@ -113,7 +113,7 @@ func (r *UserPaperRepository) GetByUser(userID uuid.UUID, status string, bookmar
 		WHERE up.user_id = $1
 		AND ($2 = '' OR up.status = $2)
 		AND ($3::boolean IS NULL OR up.is_bookmarked = $3)
-		ORDER BY up.saved_at DESC
+		ORDER BY COALESCE(up.last_read_at, up.saved_at) DESC
 		LIMIT $4 OFFSET $5
 	`
 

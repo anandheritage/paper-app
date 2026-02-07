@@ -5,7 +5,7 @@ const FEATURES = [
   {
     icon: Search,
     title: 'Powerful Search',
-    description: 'Search millions of papers by title, author, abstract, or topic.',
+    description: 'Search millions of papers by title, author, abstract, or topic — powered by Semantic Scholar data.',
   },
   {
     icon: Quote,
@@ -37,6 +37,7 @@ const FEATURES = [
 const STATS = [
   { value: '2.5M+', label: 'arXiv Papers' },
   { value: '220M+', label: 'Total Papers' },
+  { value: 'Free', label: 'Forever' },
 ];
 
 const TESTIMONIAL_FIELDS = [
@@ -56,13 +57,13 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
           <div className="flex items-center gap-2">
             <BookOpen className="h-7 w-7 text-primary-600" />
-            <span className="text-xl font-bold tracking-tight text-surface-900 dark:text-surface-100">Da Papers</span>
+            <span className="text-xl font-bold tracking-tight text-surface-900 dark:text-surface-100">dapapers</span>
           </div>
           <button
             onClick={() => navigate('/login')}
             className="px-5 py-2 text-sm font-medium rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-colors"
           >
-            Get Started
+            Get Started Free
           </button>
         </div>
       </header>
@@ -84,7 +85,7 @@ export default function Landing() {
 
             <p className="mt-6 text-lg sm:text-xl text-surface-600 dark:text-surface-400 leading-relaxed max-w-2xl mx-auto">
               Search millions of papers with citation counts, save what matters, and build your personal research library. 
-              The clean, fast reading companion for PhDs, students, and professors.
+              Powered by Semantic Scholar. The clean, fast reading companion for PhDs, students, and professors.
             </p>
 
             <div className="mt-10">
@@ -92,7 +93,7 @@ export default function Landing() {
                 onClick={() => navigate('/login')}
                 className="w-full sm:w-auto px-8 py-4 text-base font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-600/25 hover:shadow-primary-600/40 transition-all"
               >
-                Start Reading
+                Start Reading — It's Free
               </button>
             </div>
           </div>
@@ -102,7 +103,7 @@ export default function Landing() {
       {/* Stats Bar */}
       <section className="border-y border-surface-200 dark:border-surface-800 bg-surface-50 dark:bg-surface-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-2 gap-8">
+          <div className="grid grid-cols-3 gap-8">
             {STATS.map((stat) => (
               <div key={stat.label} className="text-center">
                 <p className="text-2xl sm:text-3xl font-bold text-surface-900 dark:text-surface-100">{stat.value}</p>
@@ -209,18 +210,18 @@ export default function Landing() {
             Ready to streamline your research?
           </h2>
           <p className="mt-4 text-lg text-surface-500 dark:text-surface-400">
-            Join researchers who use Da Papers to find, read, and organize academic papers.
+            Join researchers who use dapapers to find, read, and organize academic papers. Free forever.
           </p>
           <div className="mt-10">
             <button
               onClick={() => navigate('/login')}
               className="w-full sm:w-auto px-8 py-4 text-base font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-600/25 transition-all"
             >
-              Get Started
+              Get Started Free
             </button>
           </div>
           <p className="mt-4 text-sm text-surface-400">
-            Takes 10 seconds to get started.
+            No credit card required. Takes 10 seconds.
           </p>
         </div>
       </section>
@@ -231,10 +232,10 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-primary-600" />
-              <span className="font-semibold text-surface-900 dark:text-surface-100">Da Papers</span>
+              <span className="font-semibold text-surface-900 dark:text-surface-100">dapapers</span>
             </div>
             <p className="text-sm text-surface-400">
-              Data from <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a> and other open sources.
+              Data from <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">Semantic Scholar</a> &amp; <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a>.
             </p>
           </div>
         </div>

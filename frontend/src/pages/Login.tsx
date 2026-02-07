@@ -35,7 +35,7 @@ export default function Login() {
         const res = await authApi.register(email, password, name);
         if (res?.user && res?.tokens) {
           setAuth(res.user, res.tokens);
-          toast.success('Welcome to Da Papers!');
+          toast.success('Welcome to dapapers!');
           navigate(redirectTo, { replace: true });
         } else {
           toast.error('Unexpected response from server');
@@ -99,7 +99,7 @@ export default function Login() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-3">
             <BookOpen className="h-10 w-10 text-primary-600" />
-            <span className="text-3xl font-bold tracking-tight text-surface-900 dark:text-surface-100">Da Papers</span>
+            <span className="text-3xl font-bold tracking-tight text-surface-900 dark:text-surface-100">dapapers</span>
           </div>
           <p className="text-surface-500 dark:text-surface-400">
             Your academic paper reading companion

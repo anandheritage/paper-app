@@ -42,26 +42,17 @@ export default function PaperDetail() {
     queryKey: ['library', '', 'all'],
     queryFn: () => libraryApi.getLibrary('', 1000, 0),
     enabled: isAuthenticated,
-    staleTime: 0, // Always refetch so auto-read sees fresh status
   });
 
-  // Match library entry against URL id AND the loaded paper's identifiers
-  // URL id could be: PG UUID, corpusid (OS _id), or arXiv external_id
-  // Library paper_id is always PG UUID, paper.external_id is arXiv ID, paper.id is PG UUID
-  const userPaper = libraryData?.papers?.find((up) => {
-    // Direct match on URL id
-    if (up.paper_id === id || up.paper?.external_id === id || up.paper?.id === id) return true;
-    // Cross-match: loaded paper's external_id vs library paper's external_id
-    if (paper && up.paper?.external_id && paper.external_id && up.paper.external_id === paper.external_id) return true;
-    // Cross-match: loaded paper's PG id (when fetched from PG) vs library paper_id
-    if (paper && up.paper_id === paper.id) return true;
-    return false;
-  });
+  // Match by paper_id (PG UUID) OR paper.external_id (for papers opened from search with corpusid)
+  const userPaper = libraryData?.papers?.find(
+    (up) => up.paper_id === id || up.paper?.external_id === id || up.paper?.id === id
+  );
   const isSaved = !!userPaper;
   const isBookmarked = userPaper?.is_bookmarked ?? false;
 
-  // Auto-set status to "reading" when a saved paper is viewed
-  // Reset when paper id changes so it works across navigations
+  // Auto-set status to "reading" when a saved paper is viewed,
+  // and update last_read_at for papers already in "reading" status.
   const hasAutoMarkedRef = useRef(false);
   const lastAutoMarkedIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -71,11 +62,19 @@ export default function PaperDetail() {
     }
   }, [id]);
   useEffect(() => {
-    if (userPaper && userPaper.status === 'saved' && !hasAutoMarkedRef.current) {
-      hasAutoMarkedRef.current = true;
+    if (!userPaper || hasAutoMarkedRef.current) return;
+    hasAutoMarkedRef.current = true;
+
+    if (userPaper.status === 'saved') {
+      // Transition saved → reading (also updates last_read_at on backend)
       libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
         .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
-        .catch(() => {}); // silently fail
+        .catch(() => {});
+    } else if (userPaper.status === 'reading') {
+      // Paper already in reading — touch last_read_at by re-sending current status
+      libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
+        .catch(() => {});
     }
   }, [userPaper?.paper_id, userPaper?.status, queryClient]);
 
@@ -144,7 +143,7 @@ export default function PaperDetail() {
     return (
       <div className="text-center py-16">
         <p className="text-surface-500">Paper not found</p>
-        <button onClick={() => window.history.length > 2 ? navigate(-1) : navigate('/')} className="mt-3 text-primary-600 hover:underline text-sm">
+        <button onClick={() => navigate(-1)} className="mt-3 text-primary-600 hover:underline text-sm">
           Go back
         </button>
       </div>
@@ -171,9 +170,9 @@ export default function PaperDetail() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Back button — go back if there's history, otherwise go home */}
+      {/* Back button */}
       <button
-        onClick={() => window.history.length > 2 ? navigate(-1) : navigate('/')}
+        onClick={() => navigate(-1)}
         className="flex items-center gap-1 text-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 mb-6 transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -343,7 +342,7 @@ export default function PaperDetail() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 font-medium hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
             >
               <ExternalLink className="h-4 w-4" />
-              View Source
+              Semantic Scholar
             </a>
           )}
 

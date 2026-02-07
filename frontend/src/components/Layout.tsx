@@ -38,7 +38,7 @@ export default function Layout() {
             {/* Logo */}
             <NavLink to="/" className="flex items-center gap-2">
               <BookOpen className="h-7 w-7 text-primary-600 dark:text-primary-400" />
-              <span className="text-xl font-semibold tracking-tight">Da Papers</span>
+              <span className="text-xl font-semibold tracking-tight">Paper</span>
             </NavLink>
 
             {/* Nav links */}
