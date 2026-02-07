@@ -38,5 +38,11 @@ backend/ingest
 backend/enrich
 backend/harvest
 backend/index
+backend/indexer
 .vercel
 data/
+
+# Production env (keep examples)
+.env.production
+.env.staging
+!.env.production.example

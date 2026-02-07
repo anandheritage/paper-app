@@ -34,7 +34,10 @@ backend-build:
 backend-test:
 	cd backend && go test ./...
 
-# Docker commands
+# ──────────────────────────────────────────────
+# Local Docker (development)
+# ──────────────────────────────────────────────
+
 docker-up:
 	docker-compose up -d
 
@@ -47,7 +50,36 @@ docker-build:
 docker-logs:
 	docker-compose logs -f
 
+# ──────────────────────────────────────────────
+# AWS EC2 Production
+# ──────────────────────────────────────────────
+
+# Deploy to EC2 (run from EC2 instance, or use ssh)
+prod-deploy:
+	./deploy/deploy.sh deploy
+
+prod-restart:
+	./deploy/deploy.sh restart
+
+prod-rebuild:
+	./deploy/deploy.sh rebuild
+
+prod-logs:
+	./deploy/deploy.sh logs
+
+prod-status:
+	./deploy/deploy.sh status
+
+prod-stop:
+	./deploy/deploy.sh stop
+
+prod-backup:
+	./deploy/deploy.sh backup
+
+# ──────────────────────────────────────────────
 # Database migrations
+# ──────────────────────────────────────────────
+
 migrate-up:
 	cd backend && go run cmd/migrate/main.go up
 
@@ -59,7 +91,6 @@ migrate-down:
 # ──────────────────────────────────────────────
 
 # Download the Kaggle arXiv metadata snapshot (~1.4 GB zip → ~4 GB JSON)
-# Requires: pip install kaggle   and   ~/.kaggle/kaggle.json
 download-arxiv:
 	@echo "Downloading arXiv metadata from Kaggle..."
 	@mkdir -p data
@@ -84,7 +115,6 @@ ingest-cs:
 		--categories "cs."
 
 # Enrich papers with citation counts from OpenAlex API
-# This runs in the background and can be interrupted/resumed
 enrich:
 	@echo "Enriching papers with OpenAlex citation counts..."
 	cd backend && go run cmd/enrich/main.go
@@ -103,13 +133,11 @@ data-pipeline: download-arxiv ingest enrich
 # OAI-PMH Harvesting & OpenSearch Indexing
 # ──────────────────────────────────────────────
 
-# Harvest ALL arXiv metadata via OAI-PMH (official API)
-# This is the recommended approach — fetches 2.4M+ papers with full metadata
+# Harvest ALL arXiv metadata via OAI-PMH
 harvest:
 	@echo "Harvesting from arXiv OAI-PMH..."
 	cd backend && go run cmd/harvest/main.go
 
-# Harvest specific category set (e.g., cs, math, physics)
 harvest-cs:
 	cd backend && go run cmd/harvest/main.go --set=cs
 
@@ -119,11 +147,9 @@ harvest-math:
 harvest-physics:
 	cd backend && go run cmd/harvest/main.go --set=physics
 
-# Resume an interrupted harvest
 harvest-resume:
 	cd backend && go run cmd/harvest/main.go --resume
 
-# Quick test harvest (first 1000 records)
 harvest-test:
 	cd backend && go run cmd/harvest/main.go --max=1000
 
@@ -132,7 +158,6 @@ index:
 	@echo "Indexing papers into OpenSearch..."
 	cd backend && go run cmd/index/main.go
 
-# Re-create OpenSearch index from scratch
 index-recreate:
 	cd backend && go run cmd/index/main.go --recreate
 
@@ -140,30 +165,26 @@ index-recreate:
 pipeline: harvest enrich index
 
 # ──────────────────────────────────────────────
-
-# Deployment
-deploy-backend:
-	cd backend && railway up --no-gitignore --detach
+# Deployment (Vercel frontend)
+# ──────────────────────────────────────────────
 
 deploy-frontend:
 	cd frontend && npx vercel --prod --yes
 
-deploy: deploy-backend deploy-frontend
+# ──────────────────────────────────────────────
+# Utilities
+# ──────────────────────────────────────────────
 
-# Clean build artifacts
 clean:
 	rm -rf frontend/dist
 	rm -rf backend/bin
 	docker-compose down -v
 
-# Install all dependencies
 install: frontend-install
 	cd backend && go mod download
 
-# Run all tests
 test: frontend-test backend-test
 
-# Lint
 lint:
 	cd frontend && npm run lint
 	cd backend && golangci-lint run

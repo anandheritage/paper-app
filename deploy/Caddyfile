@@ -1,0 +1,26 @@
+# Caddyfile — auto-HTTPS reverse proxy for Paper App backend
+# Set API_DOMAIN env var or replace the placeholder below.
+#
+# Caddy auto-obtains and renews Let's Encrypt certificates.
+
+{$API_DOMAIN:api.dapapers.com} {
+    # Proxy all traffic to Go backend
+    reverse_proxy backend:8080
+
+    # Security headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Gzip compression
+    encode gzip
+
+    # Access logs
+    log {
+        output stdout
+        format console
+    }
+}
