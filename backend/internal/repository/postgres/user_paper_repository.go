@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,14 +25,15 @@ func (r *UserPaperRepository) Create(userPaper *domain.UserPaper) error {
 	defer cancel()
 
 	query := `
-		INSERT INTO user_papers (id, user_id, paper_id, status, is_bookmarked, reading_progress, notes, tags, saved_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO user_papers (id, user_id, paper_id, status, is_bookmarked, reading_progress, notes, tags, saved_at, bookmarked_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (user_id, paper_id) DO UPDATE SET
 			status = EXCLUDED.status,
 			is_bookmarked = EXCLUDED.is_bookmarked,
 			reading_progress = EXCLUDED.reading_progress,
 			notes = EXCLUDED.notes,
-			tags = EXCLUDED.tags
+			tags = EXCLUDED.tags,
+			bookmarked_at = EXCLUDED.bookmarked_at
 		RETURNING id
 	`
 
@@ -39,6 +41,10 @@ func (r *UserPaperRepository) Create(userPaper *domain.UserPaper) error {
 		userPaper.ID = uuid.New()
 	}
 	userPaper.SavedAt = time.Now()
+	if userPaper.IsBookmarked && userPaper.BookmarkedAt == nil {
+		now := time.Now()
+		userPaper.BookmarkedAt = &now
+	}
 
 	err := r.db.QueryRow(ctx, query,
 		userPaper.ID,
@@ -50,6 +56,7 @@ func (r *UserPaperRepository) Create(userPaper *domain.UserPaper) error {
 		userPaper.Notes,
 		userPaper.Tags,
 		userPaper.SavedAt,
+		userPaper.BookmarkedAt,
 	).Scan(&userPaper.ID)
 
 	return err
@@ -61,7 +68,7 @@ func (r *UserPaperRepository) GetByUserAndPaper(userID, paperID uuid.UUID) (*dom
 
 	query := `
 		SELECT up.id, up.user_id, up.paper_id, up.status, up.is_bookmarked, up.reading_progress,
-			   up.notes, up.tags, up.saved_at, up.last_read_at,
+			   up.notes, up.tags, up.saved_at, up.last_read_at, up.bookmarked_at,
 			   p.id, p.external_id, p.source, p.title, p.abstract, p.authors, p.published_date, p.pdf_url, p.metadata, p.created_at
 		FROM user_papers up
 		JOIN papers p ON up.paper_id = p.id
@@ -80,6 +87,7 @@ func (r *UserPaperRepository) GetByUserAndPaper(userID, paperID uuid.UUID) (*dom
 		&userPaper.Tags,
 		&userPaper.SavedAt,
 		&userPaper.LastReadAt,
+		&userPaper.BookmarkedAt,
 		&userPaper.Paper.ID,
 		&userPaper.Paper.ExternalID,
 		&userPaper.Paper.Source,
@@ -104,18 +112,28 @@ func (r *UserPaperRepository) GetByUser(userID uuid.UUID, status string, bookmar
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	baseQuery := `
+	// Dynamic sort: each view sorts by its most relevant event time
+	orderBy := "COALESCE(up.last_read_at, up.saved_at) DESC" // default
+	if bookmarked != nil && *bookmarked {
+		orderBy = "COALESCE(up.bookmarked_at, up.saved_at) DESC" // bookmarks: most recently bookmarked first
+	} else if status == domain.StatusReading {
+		orderBy = "COALESCE(up.last_read_at, up.saved_at) DESC" // reading: most recently read first
+	} else if status == domain.StatusSaved {
+		orderBy = "up.saved_at DESC" // saved: most recently saved first
+	}
+
+	baseQuery := fmt.Sprintf(`
 		SELECT up.id, up.user_id, up.paper_id, up.status, up.is_bookmarked, up.reading_progress,
-			   up.notes, up.tags, up.saved_at, up.last_read_at,
+			   up.notes, up.tags, up.saved_at, up.last_read_at, up.bookmarked_at,
 			   p.id, p.external_id, p.source, p.title, p.abstract, p.authors, p.published_date, p.pdf_url, p.metadata, p.created_at
 		FROM user_papers up
 		JOIN papers p ON up.paper_id = p.id
 		WHERE up.user_id = $1
 		AND ($2 = '' OR up.status = $2)
 		AND ($3::boolean IS NULL OR up.is_bookmarked = $3)
-		ORDER BY COALESCE(up.last_read_at, up.saved_at) DESC
+		ORDER BY %s
 		LIMIT $4 OFFSET $5
-	`
+	`, orderBy)
 
 	countQuery := `
 		SELECT COUNT(*)
@@ -151,6 +169,7 @@ func (r *UserPaperRepository) GetByUser(userID uuid.UUID, status string, bookmar
 			&userPaper.Tags,
 			&userPaper.SavedAt,
 			&userPaper.LastReadAt,
+			&userPaper.BookmarkedAt,
 			&userPaper.Paper.ID,
 			&userPaper.Paper.ExternalID,
 			&userPaper.Paper.Source,
@@ -177,7 +196,7 @@ func (r *UserPaperRepository) Update(userPaper *domain.UserPaper) error {
 
 	query := `
 		UPDATE user_papers
-		SET status = $3, is_bookmarked = $4, reading_progress = $5, notes = $6, tags = $7, last_read_at = $8
+		SET status = $3, is_bookmarked = $4, reading_progress = $5, notes = $6, tags = $7, last_read_at = $8, bookmarked_at = $9
 		WHERE user_id = $1 AND paper_id = $2
 	`
 
@@ -190,6 +209,7 @@ func (r *UserPaperRepository) Update(userPaper *domain.UserPaper) error {
 		userPaper.Notes,
 		userPaper.Tags,
 		userPaper.LastReadAt,
+		userPaper.BookmarkedAt,
 	)
 	return err
 }

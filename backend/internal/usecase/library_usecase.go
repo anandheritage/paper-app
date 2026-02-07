@@ -175,6 +175,7 @@ func (u *LibraryUsecase) BookmarkPaper(userID, paperID uuid.UUID) (*domain.UserP
 		return nil, err
 	}
 
+	now := time.Now()
 	if userPaper == nil {
 		// Save and bookmark
 		paper, err := u.paperRepo.GetByID(paperID)
@@ -190,7 +191,8 @@ func (u *LibraryUsecase) BookmarkPaper(userID, paperID uuid.UUID) (*domain.UserP
 			PaperID:      paperID,
 			Status:       domain.StatusSaved,
 			IsBookmarked: true,
-			SavedAt:      time.Now(),
+			BookmarkedAt: &now,
+			SavedAt:      now,
 			Paper:        paper,
 		}
 
@@ -199,6 +201,7 @@ func (u *LibraryUsecase) BookmarkPaper(userID, paperID uuid.UUID) (*domain.UserP
 		}
 	} else {
 		userPaper.IsBookmarked = true
+		userPaper.BookmarkedAt = &now
 		if err := u.userPaperRepo.Update(userPaper); err != nil {
 			return nil, err
 		}
@@ -217,6 +220,7 @@ func (u *LibraryUsecase) UnbookmarkPaper(userID, paperID uuid.UUID) error {
 	}
 
 	userPaper.IsBookmarked = false
+	userPaper.BookmarkedAt = nil
 	return u.userPaperRepo.Update(userPaper)
 }
 

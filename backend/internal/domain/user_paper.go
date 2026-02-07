@@ -18,6 +18,7 @@ type UserPaper struct {
 	Tags            json.RawMessage `json:"tags,omitempty"`
 	SavedAt         time.Time       `json:"saved_at"`
 	LastReadAt      *time.Time      `json:"last_read_at,omitempty"`
+	BookmarkedAt    *time.Time      `json:"bookmarked_at,omitempty"`
 	Paper           *Paper          `json:"paper,omitempty"`
 }
 
