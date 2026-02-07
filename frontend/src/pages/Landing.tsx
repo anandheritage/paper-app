@@ -37,7 +37,6 @@ const FEATURES = [
 const STATS = [
   { value: '2.5M+', label: 'arXiv Papers' },
   { value: '220M+', label: 'Total Papers' },
-  { value: 'Free', label: 'Forever' },
 ];
 
 const TESTIMONIAL_FIELDS = [
@@ -63,7 +62,7 @@ export default function Landing() {
             onClick={() => navigate('/login')}
             className="px-5 py-2 text-sm font-medium rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-colors"
           >
-            Get Started Free
+            Get Started
           </button>
         </div>
       </header>
@@ -93,7 +92,7 @@ export default function Landing() {
                 onClick={() => navigate('/login')}
                 className="w-full sm:w-auto px-8 py-4 text-base font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-600/25 hover:shadow-primary-600/40 transition-all"
               >
-                Start Reading — It's Free
+                Start Reading
               </button>
             </div>
           </div>
@@ -103,7 +102,7 @@ export default function Landing() {
       {/* Stats Bar */}
       <section className="border-y border-surface-200 dark:border-surface-800 bg-surface-50 dark:bg-surface-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-3 gap-8">
+          <div className="grid grid-cols-2 gap-8">
             {STATS.map((stat) => (
               <div key={stat.label} className="text-center">
                 <p className="text-2xl sm:text-3xl font-bold text-surface-900 dark:text-surface-100">{stat.value}</p>
@@ -210,18 +209,18 @@ export default function Landing() {
             Ready to streamline your research?
           </h2>
           <p className="mt-4 text-lg text-surface-500 dark:text-surface-400">
-            Join researchers who use Da Papers to find, read, and organize academic papers. Free forever.
+            Join researchers who use Da Papers to find, read, and organize academic papers.
           </p>
           <div className="mt-10">
             <button
               onClick={() => navigate('/login')}
               className="w-full sm:w-auto px-8 py-4 text-base font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-600/25 transition-all"
             >
-              Get Started Free
+              Get Started
             </button>
           </div>
           <p className="mt-4 text-sm text-surface-400">
-            No credit card required. Takes 10 seconds.
+            Takes 10 seconds to get started.
           </p>
         </div>
       </section>
