@@ -11,6 +11,7 @@ COPY . .
 
 # Build all binaries
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/server    ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/oaimport  ./cmd/oaimport/main.go
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/s2import  ./cmd/s2import/main.go
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/harvest   ./cmd/harvest/main.go
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /bin/indexer   ./cmd/index/main.go
@@ -23,6 +24,7 @@ RUN apk add --no-cache ca-certificates tzdata curl
 WORKDIR /app
 
 COPY --from=builder /bin/server   ./server
+COPY --from=builder /bin/oaimport ./oaimport
 COPY --from=builder /bin/s2import ./s2import
 COPY --from=builder /bin/harvest  ./harvest
 COPY --from=builder /bin/indexer  ./indexer
