@@ -236,8 +236,10 @@ func (u *PaperUsecase) Discover(categories []string, excludeExternalIDs []string
 	defer cancel()
 
 	papers, err := u.osClient.GetRandomPapers(ctx, categories, excludeExternalIDs, seed, 6)
-	if err != nil {
-		log.Printf("Discover search failed: %v", err)
+	if err != nil || len(papers) == 0 {
+		if err != nil {
+			log.Printf("Discover search failed: %v", err)
+		}
 		// Try without categories as fallback (popular random papers)
 		papers, err = u.osClient.GetRandomPapers(ctx, nil, excludeExternalIDs, seed, 6)
 		if err != nil {
