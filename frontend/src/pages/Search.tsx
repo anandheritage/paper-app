@@ -128,7 +128,7 @@ export default function Search() {
       <div>
         <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Search Papers</h1>
         <p className="text-surface-500 dark:text-surface-400 mt-1">
-          Search across millions of research papers powered by Semantic Scholar
+          Search across millions of research papers
         </p>
       </div>
 

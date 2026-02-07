@@ -5,7 +5,7 @@ const FEATURES = [
   {
     icon: Search,
     title: 'Powerful Search',
-    description: 'Search millions of papers by title, author, abstract, or topic — powered by Semantic Scholar data.',
+    description: 'Search millions of papers by title, author, abstract, or topic.',
   },
   {
     icon: Quote,
@@ -84,7 +84,7 @@ export default function Landing() {
 
             <p className="mt-6 text-lg sm:text-xl text-surface-600 dark:text-surface-400 leading-relaxed max-w-2xl mx-auto">
               Search millions of papers with citation counts, save what matters, and build your personal research library. 
-              Powered by Semantic Scholar. The clean, fast reading companion for PhDs, students, and professors.
+              The clean, fast reading companion for PhDs, students, and professors.
             </p>
 
             <div className="mt-10">
@@ -234,7 +234,7 @@ export default function Landing() {
               <span className="font-semibold text-surface-900 dark:text-surface-100">Da Papers</span>
             </div>
             <p className="text-sm text-surface-400">
-              Data from <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">Semantic Scholar</a> &amp; <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a>.
+              Data from <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a> and other open sources.
             </p>
           </div>
         </div>

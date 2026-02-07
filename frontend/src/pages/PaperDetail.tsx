@@ -343,7 +343,7 @@ export default function PaperDetail() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 font-medium hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
             >
               <ExternalLink className="h-4 w-4" />
-              Semantic Scholar
+              View Source
             </a>
           )}
 
