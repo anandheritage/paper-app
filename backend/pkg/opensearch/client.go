@@ -74,7 +74,6 @@ const IndexMapping = `{
       "categories":       { "type": "keyword" },
       "published_date":   { "type": "date", "format": "yyyy-MM-dd||epoch_millis" },
       "updated_date":     { "type": "date", "format": "yyyy-MM-dd||epoch_millis" },
-      "citation_count":   { "type": "integer" },
       "doi":              { "type": "keyword" },
       "journal_ref":      { "type": "text" },
       "comments":         { "type": "text" },
@@ -143,7 +142,6 @@ type PaperDoc struct {
 	Categories      []string    `json:"categories"`
 	PublishedDate   *string     `json:"published_date,omitempty"`
 	UpdatedDate     *string     `json:"updated_date,omitempty"`
-	CitationCount   int         `json:"citation_count"`
 	DOI             string      `json:"doi,omitempty"`
 	JournalRef      string      `json:"journal_ref,omitempty"`
 	Comments        string      `json:"comments,omitempty"`
@@ -247,7 +245,7 @@ func (c *Client) BulkIndex(ctx context.Context, docs []*PaperDoc) (int, error) {
 type SearchParams struct {
 	Query      string
 	Categories []string
-	SortBy     string // "relevance", "citations", "date"
+	SortBy     string // "relevance", "date"
 	Limit      int
 	Offset     int
 }
@@ -332,17 +330,52 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 	}
 
 	// Build the query part
-	var must []interface{}
+	var should []interface{}
 	var filter []interface{}
 
 	if params.Query != "" {
-		// Multi-match across title (boosted), abstract, authors
-		must = append(must, map[string]interface{}{
-			"multi_match": map[string]interface{}{
-				"query":  params.Query,
-				"fields": []string{"title^3", "title.keyword^5", "abstract", "authors.name^2"},
-				"type":   "best_fields",
-				"fuzziness": "AUTO",
+		// Use a combination of should clauses for better relevance:
+		// 1. Exact phrase match on title (highest boost)
+		should = append(should, map[string]interface{}{
+			"match_phrase": map[string]interface{}{
+				"title": map[string]interface{}{
+					"query": params.Query,
+					"boost": 10,
+				},
+			},
+		})
+		// 2. Individual term match on title (high boost)
+		should = append(should, map[string]interface{}{
+			"match": map[string]interface{}{
+				"title": map[string]interface{}{
+					"query":     params.Query,
+					"boost":     3,
+					"fuzziness": "AUTO",
+				},
+			},
+		})
+		// 3. Abstract match
+		should = append(should, map[string]interface{}{
+			"match": map[string]interface{}{
+				"abstract": map[string]interface{}{
+					"query": params.Query,
+					"boost": 1,
+				},
+			},
+		})
+		// 4. Nested author name match
+		should = append(should, map[string]interface{}{
+			"nested": map[string]interface{}{
+				"path": "authors",
+				"query": map[string]interface{}{
+					"match": map[string]interface{}{
+						"authors.name": map[string]interface{}{
+							"query":     params.Query,
+							"boost":     2,
+							"fuzziness": "AUTO",
+						},
+					},
+				},
 			},
 		})
 	}
@@ -356,8 +389,9 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 	}
 
 	boolQuery := map[string]interface{}{}
-	if len(must) > 0 {
-		boolQuery["must"] = must
+	if len(should) > 0 {
+		boolQuery["should"] = should
+		boolQuery["minimum_should_match"] = 1
 	}
 	if len(filter) > 0 {
 		boolQuery["filter"] = filter
@@ -375,12 +409,6 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 
 	// Sorting
 	switch params.SortBy {
-	case "citations":
-		query["sort"] = []interface{}{
-			map[string]interface{}{"citation_count": map[string]string{"order": "desc"}},
-			"_score",
-			map[string]interface{}{"published_date": map[string]string{"order": "desc", "missing": "_last"}},
-		}
 	case "date":
 		query["sort"] = []interface{}{
 			map[string]interface{}{"published_date": map[string]string{"order": "desc", "missing": "_last"}},
@@ -388,10 +416,9 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 		}
 	default: // relevance
 		if params.Query != "" {
-			// Default scoring + citation boost
 			query["sort"] = []interface{}{
 				"_score",
-				map[string]interface{}{"citation_count": map[string]string{"order": "desc"}},
+				map[string]interface{}{"published_date": map[string]string{"order": "desc", "missing": "_last"}},
 			}
 		} else {
 			query["sort"] = []interface{}{

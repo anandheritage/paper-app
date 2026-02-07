@@ -46,3 +46,4 @@ data/
 .env.production
 .env.staging
 !.env.production.example
+frontend/.env.vercel

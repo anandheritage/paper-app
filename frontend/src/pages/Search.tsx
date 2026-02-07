@@ -11,7 +11,6 @@ import { ListSkeleton } from '../components/Skeleton';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
-  { value: 'citations', label: 'Most Cited' },
   { value: 'date', label: 'Newest First' },
 ];
 

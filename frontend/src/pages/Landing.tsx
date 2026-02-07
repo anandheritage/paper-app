@@ -19,8 +19,8 @@ const FEATURES = [
   },
   {
     icon: Quote,
-    title: 'Citation Sorting',
-    description: 'Sort by citation count to find the most influential papers in any field instantly.',
+    title: 'Smart Relevance',
+    description: 'Find exactly what you need. Our search ranks papers by title match, abstract relevance, and author name.',
   },
   {
     icon: FileText,

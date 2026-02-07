@@ -1,17 +1,13 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Quote, Tag } from 'lucide-react';
+import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
 import { useAuthStore } from '../stores/authStore';
 import { PaperDetailSkeleton } from '../components/Skeleton';
 
-function formatCitations(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
-  return String(count);
-}
+
 
 function getArxivAbsUrl(externalId: string): string {
   return `https://arxiv.org/abs/${externalId}`;
@@ -127,8 +123,6 @@ export default function PaperDetail() {
     ? new Date(paper.published_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : null;
 
-  const citationCount = paper.citation_count ?? 0;
-
   // Extract categories — prefer the new top-level field, fallback to metadata
   let categories: string[] = paper.categories ?? [];
   if (categories.length === 0 && paper.metadata) {
@@ -164,12 +158,6 @@ export default function PaperDetail() {
             {isArxiv ? 'arXiv' : paper.source}
           </span>
           <span className="text-sm text-surface-400">{paper.external_id}</span>
-          {citationCount > 0 && (
-            <span className="flex items-center gap-1 text-sm text-amber-600 dark:text-amber-400 font-medium">
-              <Quote className="h-3.5 w-3.5" />
-              {formatCitations(citationCount)} citations
-            </span>
-          )}
         </div>
 
         <h1 className="text-2xl sm:text-3xl font-bold text-surface-900 dark:text-surface-100 leading-tight">

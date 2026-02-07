@@ -128,7 +128,6 @@ func convertOSHitToPaper(hit *opensearch.SearchHit) *domain.Paper {
 		PublishedDate:   pubDate,
 		UpdatedDate:     updDate,
 		PDFURL:          doc.PDFURL,
-		CitationCount:   doc.CitationCount,
 		PrimaryCategory: doc.PrimaryCategory,
 		Categories:      doc.Categories,
 		DOI:             doc.DOI,

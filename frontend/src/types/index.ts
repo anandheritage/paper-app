@@ -19,7 +19,6 @@ export interface Paper {
   pdf_url: string;
   metadata: Record<string, unknown>;
   created_at: string;
-  citation_count?: number;
   primary_category?: string;
   categories?: string[];
   doi?: string;
