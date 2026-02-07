@@ -105,7 +105,19 @@ type oaOpenAccess struct {
 
 // ---------- Main ----------
 
-var arxivIDRegex = regexp.MustCompile(`arxiv\.org/abs/(.+?)(?:\?|v\d+)?$`)
+// Multiple patterns to extract arXiv IDs from different URL formats:
+//   arxiv.org/abs/2301.01234   – canonical
+//   arxiv.org/pdf/2301.01234   – PDF link used as landing page
+//   export.arxiv.org/pdf/2301.01234 – export mirror
+//   doi.org/10.48550/arxiv.2301.01234 – DOI-based
+var (
+	arxivAbsRegex = regexp.MustCompile(`arxiv\.org/abs/([0-9]+\.[0-9]+)`)
+	arxivPDFRegex = regexp.MustCompile(`arxiv\.org/pdf/([0-9]+\.[0-9]+)`)
+	arxivDOIRegex = regexp.MustCompile(`10\.48550/arxiv\.([0-9]+\.[0-9]+)`)
+	// Older arXiv IDs like hep-ph/9901234
+	arxivOldAbsRegex = regexp.MustCompile(`arxiv\.org/abs/([a-z-]+/[0-9]+)`)
+	arxivOldPDFRegex = regexp.MustCompile(`arxiv\.org/pdf/([a-z-]+/[0-9]+)`)
+)
 
 func main() {
 	osEndpoint := flag.String("opensearch", envOrDefault("OPENSEARCH_ENDPOINT", "http://localhost:9200"), "OpenSearch endpoint URL")
@@ -412,31 +424,47 @@ func convertOAWork(w *oaWork) *opensearch.PaperDoc {
 }
 
 func extractArxivInfo(w *oaWork) (arxivID string, pdfURL string) {
+	// Pass 1: Try to extract arXiv ID from all location URLs
 	for _, loc := range w.Locations {
-		lpu := loc.LandingPageURL
+		lpu := strings.ToLower(loc.LandingPageURL)
 		if lpu == "" {
 			continue
 		}
-		if strings.Contains(lpu, "arxiv.org") {
-			matches := arxivIDRegex.FindStringSubmatch(lpu)
-			if len(matches) > 1 {
-				arxivID = matches[1]
-				// Remove version suffix (v1, v2, etc.)
-				if idx := strings.LastIndex(arxivID, "v"); idx > 0 {
-					rest := arxivID[idx+1:]
-					if _, err := strconv.Atoi(rest); err == nil {
-						arxivID = arxivID[:idx]
-					}
+
+		// Try each pattern in order of reliability
+		for _, re := range []*regexp.Regexp{arxivAbsRegex, arxivPDFRegex, arxivOldAbsRegex, arxivOldPDFRegex} {
+			if m := re.FindStringSubmatch(lpu); len(m) > 1 {
+				arxivID = m[1]
+				if loc.PDFURL != nil && *loc.PDFURL != "" {
+					pdfURL = *loc.PDFURL
 				}
+				break
 			}
-			if loc.PDFURL != nil && *loc.PDFURL != "" {
-				pdfURL = *loc.PDFURL
-			}
+		}
+		if arxivID != "" {
 			break
 		}
 	}
 
-	// Fallback: construct PDF URL from arXiv ID
+	// Pass 2: Try DOI-based arXiv extraction (e.g. doi.org/10.48550/arxiv.2301.01234)
+	if arxivID == "" {
+		doi := strings.ToLower(w.DOI)
+		if m := arxivDOIRegex.FindStringSubmatch(doi); len(m) > 1 {
+			arxivID = m[1]
+		}
+		// Also check locations for DOI links
+		if arxivID == "" {
+			for _, loc := range w.Locations {
+				lpu := strings.ToLower(loc.LandingPageURL)
+				if m := arxivDOIRegex.FindStringSubmatch(lpu); len(m) > 1 {
+					arxivID = m[1]
+					break
+				}
+			}
+		}
+	}
+
+	// Construct PDF URL if we have an ID but no PDF
 	if arxivID != "" && pdfURL == "" {
 		pdfURL = "https://arxiv.org/pdf/" + arxivID
 	}
