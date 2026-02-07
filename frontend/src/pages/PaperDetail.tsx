@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Tag, Quote, Award, Globe } from 'lucide-react';
+import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Tag, Quote, Award, Globe, Share2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
@@ -403,6 +403,19 @@ export default function PaperDetail() {
               </button>
             </>
           )}
+
+          {/* WhatsApp Share */}
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(
+              `${paper.title}\n\n${isArxiv && paper.external_id ? getArxivAbsUrl(paper.external_id) : paper.s2_url || `${window.location.origin}/paper/${paper.id}`}`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-green-300 dark:border-green-800 text-green-600 dark:text-green-400 font-medium hover:bg-green-50 dark:hover:bg-green-950 transition-colors"
+          >
+            <Share2 className="h-4 w-4" />
+            WhatsApp
+          </a>
         </div>
       </div>
 
