@@ -37,7 +37,7 @@ const FEATURES = [
 const STATS = [
   { value: '2.5M+', label: 'arXiv Papers' },
   { value: '220M+', label: 'Total Papers' },
-  { value: 'Free', label: 'Forever' },
+  { value: '940K+', label: 'Indexed Papers' },
 ];
 
 const TESTIMONIAL_FIELDS = [
@@ -93,7 +93,7 @@ export default function Landing() {
                 onClick={() => navigate('/login')}
                 className="w-full sm:w-auto px-8 py-4 text-base font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-600/25 hover:shadow-primary-600/40 transition-all"
               >
-                Start Reading — It's Free
+                Start Reading
               </button>
             </div>
           </div>
@@ -217,11 +217,11 @@ export default function Landing() {
               onClick={() => navigate('/login')}
               className="w-full sm:w-auto px-8 py-4 text-base font-semibold rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-600/25 transition-all"
             >
-              Get Started Free
+              Get Started
             </button>
           </div>
           <p className="mt-4 text-sm text-surface-400">
-            No credit card required. Takes 10 seconds.
+            Takes 10 seconds to get started.
           </p>
         </div>
       </section>
