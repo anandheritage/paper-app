@@ -42,12 +42,21 @@ export default function PaperDetail() {
     queryKey: ['library', '', 'all'],
     queryFn: () => libraryApi.getLibrary('', 1000, 0),
     enabled: isAuthenticated,
+    staleTime: 0, // Always refetch so auto-read sees fresh status
   });
 
-  // Match by paper_id (PG UUID) OR paper.external_id (for papers opened from search with corpusid)
-  const userPaper = libraryData?.papers?.find(
-    (up) => up.paper_id === id || up.paper?.external_id === id || up.paper?.id === id
-  );
+  // Match library entry against URL id AND the loaded paper's identifiers
+  // URL id could be: PG UUID, corpusid (OS _id), or arXiv external_id
+  // Library paper_id is always PG UUID, paper.external_id is arXiv ID, paper.id is PG UUID
+  const userPaper = libraryData?.papers?.find((up) => {
+    // Direct match on URL id
+    if (up.paper_id === id || up.paper?.external_id === id || up.paper?.id === id) return true;
+    // Cross-match: loaded paper's external_id vs library paper's external_id
+    if (paper && up.paper?.external_id && paper.external_id && up.paper.external_id === paper.external_id) return true;
+    // Cross-match: loaded paper's PG id (when fetched from PG) vs library paper_id
+    if (paper && up.paper_id === paper.id) return true;
+    return false;
+  });
   const isSaved = !!userPaper;
   const isBookmarked = userPaper?.is_bookmarked ?? false;
 
