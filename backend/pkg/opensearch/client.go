@@ -631,11 +631,11 @@ func (c *Client) GetRandomPapers(ctx context.Context, categories []string, exclu
 		})
 	}
 
-	// Minimum citation count for quality suggestions (use >=1 so at least some signal exists)
+	// Minimum citation count for quality suggestions
 	filter = append(filter, map[string]interface{}{
 		"range": map[string]interface{}{
 			"citation_count": map[string]interface{}{
-				"gte": 1,
+				"gte": 10,
 			},
 		},
 	})
