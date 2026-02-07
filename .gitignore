@@ -36,5 +36,7 @@ docker-compose.override.yml
 backend/server
 backend/ingest
 backend/enrich
+backend/harvest
+backend/index
 .vercel
 data/

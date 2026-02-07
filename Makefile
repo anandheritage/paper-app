@@ -100,6 +100,46 @@ ingest-test:
 data-pipeline: download-arxiv ingest enrich
 
 # ──────────────────────────────────────────────
+# OAI-PMH Harvesting & OpenSearch Indexing
+# ──────────────────────────────────────────────
+
+# Harvest ALL arXiv metadata via OAI-PMH (official API)
+# This is the recommended approach — fetches 2.4M+ papers with full metadata
+harvest:
+	@echo "Harvesting from arXiv OAI-PMH..."
+	cd backend && go run cmd/harvest/main.go
+
+# Harvest specific category set (e.g., cs, math, physics)
+harvest-cs:
+	cd backend && go run cmd/harvest/main.go --set=cs
+
+harvest-math:
+	cd backend && go run cmd/harvest/main.go --set=math
+
+harvest-physics:
+	cd backend && go run cmd/harvest/main.go --set=physics
+
+# Resume an interrupted harvest
+harvest-resume:
+	cd backend && go run cmd/harvest/main.go --resume
+
+# Quick test harvest (first 1000 records)
+harvest-test:
+	cd backend && go run cmd/harvest/main.go --max=1000
+
+# Index papers from PostgreSQL into OpenSearch
+index:
+	@echo "Indexing papers into OpenSearch..."
+	cd backend && go run cmd/index/main.go
+
+# Re-create OpenSearch index from scratch
+index-recreate:
+	cd backend && go run cmd/index/main.go --recreate
+
+# Full pipeline: harvest → enrich → index
+pipeline: harvest enrich index
+
+# ──────────────────────────────────────────────
 
 # Deployment
 deploy-backend:

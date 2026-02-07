@@ -50,9 +50,9 @@ func NewRouter(handler *Handler, authMiddleware *middleware.AuthMiddleware, allo
 		// Paper routes (public search, protected for actions)
 		r.Route("/papers", func(r chi.Router) {
 			r.Get("/search", handler.SearchPapers)
+			r.Get("/categories", handler.GetCategories)
+			r.Get("/categories/grouped", handler.GetGroupedCategories)
 			r.Get("/{id}", handler.GetPaper)
-			r.Get("/{id}/pdf", handler.ProxyPDF)
-			r.Get("/{id}/html-url", handler.GetPaperHTMLURL)
 		})
 
 		// Protected routes

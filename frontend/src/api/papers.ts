@@ -1,25 +1,37 @@
 import { api } from './client';
-import type { Paper, SearchResult, HTMLURLResponse } from '../types';
+import type { Paper, SearchResult, CategoryInfo } from '../types';
 
 export const papersApi = {
-  search(query: string, source?: string, limit = 20, offset = 0, sort = 'relevance'): Promise<SearchResult> {
-    return api.get('/api/v1/papers/search', { q: query, source: source || '', limit, offset, sort });
+  search(
+    query: string,
+    source?: string,
+    limit = 20,
+    offset = 0,
+    sort = 'relevance',
+    categories?: string[],
+  ): Promise<SearchResult> {
+    const params: Record<string, string | number> = {
+      q: query,
+      source: source || '',
+      limit,
+      offset,
+      sort,
+    };
+    if (categories && categories.length > 0) {
+      params.categories = categories.join(',');
+    }
+    return api.get('/api/v1/papers/search', params);
   },
 
   getById(id: string): Promise<Paper> {
     return api.get(`/api/v1/papers/${id}`);
   },
 
-  // Returns the direct source PDF URL (arXiv, etc.) — we link to the source
-  // per arXiv Terms of Use rather than proxying through our backend.
-  getPdfUrl(paper: { source: string; external_id: string; pdf_url: string }): string {
-    if (paper.source === 'arxiv') {
-      return `https://arxiv.org/pdf/${paper.external_id}`;
-    }
-    return paper.pdf_url;
+  getCategories(): Promise<CategoryInfo[]> {
+    return api.get('/api/v1/papers/categories');
   },
 
-  getHtmlUrl(id: string): Promise<HTMLURLResponse> {
-    return api.get(`/api/v1/papers/${id}/html-url`);
+  getGroupedCategories(): Promise<Record<string, CategoryInfo[]>> {
+    return api.get('/api/v1/papers/categories/grouped');
   },
 };

@@ -2,10 +2,8 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -194,7 +192,8 @@ func (h *Handler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	source := r.URL.Query().Get("source")
-	sortBy := r.URL.Query().Get("sort") // "relevance", "citations", "date"
+	sortBy := r.URL.Query().Get("sort")       // "relevance", "citations", "date"
+	catFilter := r.URL.Query().Get("categories") // comma-separated: "cs.AI,cs.LG"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
@@ -202,13 +201,35 @@ func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
 		limit = 20
 	}
 
-	result, err := h.paperUsecase.SearchPapers(query, source, limit, offset, sortBy)
+	categories := usecase.ParseCategories(catFilter)
+
+	result, err := h.paperUsecase.SearchPapers(query, source, limit, offset, sortBy, categories)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to search papers")
 		return
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+// GetCategories returns all arXiv categories with paper counts.
+func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
+	categories, err := h.paperUsecase.GetCategories()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get categories")
+		return
+	}
+	writeJSON(w, http.StatusOK, categories)
+}
+
+// GetGroupedCategories returns categories organized by group (CS, Math, Physics, etc.).
+func (h *Handler) GetGroupedCategories(w http.ResponseWriter, r *http.Request) {
+	grouped, err := h.paperUsecase.GetGroupedCategories()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get categories")
+		return
+	}
+	writeJSON(w, http.StatusOK, grouped)
 }
 
 func (h *Handler) GetPaper(w http.ResponseWriter, r *http.Request) {
@@ -230,106 +251,6 @@ func (h *Handler) GetPaper(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, paper)
-}
-
-// GetPaperPDFURL returns the source PDF URL for a paper.
-// Per arXiv Terms of Use, we direct users to arXiv.org to retrieve e-print
-// content rather than storing/serving PDFs from our servers.
-func (h *Handler) ProxyPDF(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
-		return
-	}
-
-	paper, err := h.paperUsecase.GetPaper(id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to get paper")
-		return
-	}
-	if paper == nil || paper.PDFURL == "" {
-		writeError(w, http.StatusNotFound, "PDF not found")
-		return
-	}
-
-	// Build the canonical source PDF URL
-	pdfURL := paper.PDFURL
-	if paper.Source == "arxiv" {
-		pdfURL = fmt.Sprintf("https://arxiv.org/pdf/%s", paper.ExternalID)
-	}
-
-	// Redirect to the source — legal compliance with arXiv ToU
-	// "Direct users to arXiv.org to retrieve e-print content"
-	http.Redirect(w, r, pdfURL, http.StatusFound)
-}
-
-func (h *Handler) GetPaperHTMLURL(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
-		return
-	}
-
-	paper, err := h.paperUsecase.GetPaper(id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to get paper")
-		return
-	}
-	if paper == nil {
-		writeError(w, http.StatusNotFound, "Paper not found")
-		return
-	}
-
-	// Build candidate HTML URLs to try (in order of preference)
-	var candidates []string
-	switch paper.Source {
-	case "arxiv":
-		// Try arxiv.org/html first (official, newer), then ar5iv as fallback
-		candidates = append(candidates,
-			fmt.Sprintf("https://arxiv.org/html/%s", paper.ExternalID),
-			fmt.Sprintf("https://ar5iv.labs.arxiv.org/html/%s", paper.ExternalID),
-		)
-	case "pubmed":
-		if paper.Metadata != nil {
-			var metadata map[string]interface{}
-			if err := json.Unmarshal(paper.Metadata, &metadata); err == nil {
-				if pmcID, ok := metadata["pmc_id"].(string); ok && pmcID != "" {
-					candidates = append(candidates, fmt.Sprintf("https://www.ncbi.nlm.nih.gov/pmc/articles/%s/", pmcID))
-				}
-			}
-		}
-	}
-
-	if len(candidates) == 0 {
-		writeError(w, http.StatusNotFound, "HTML version not available for this paper")
-		return
-	}
-
-	// Check which URL is actually accessible (HEAD request with short timeout)
-	client := &http.Client{Timeout: 5 * time.Second}
-	htmlURL := ""
-	for _, url := range candidates {
-		resp, err := client.Head(url)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-				htmlURL = url
-				break
-			}
-		}
-	}
-
-	if htmlURL == "" {
-		writeError(w, http.StatusNotFound, "HTML version not available for this paper")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"html_url": htmlURL,
-		"source":   paper.Source,
-	})
 }
 
 // Library handlers

@@ -1,19 +1,21 @@
 // Package main provides a CLI tool to enrich locally-stored arXiv papers with
-// citation counts from the OpenAlex API.
+// citation counts from the Semantic Scholar API.
 //
-// It reads papers with citation_count=0 from PostgreSQL, queries OpenAlex in
-// batches of 50 (using the arXiv DOI pattern), and updates the local records.
+// It reads papers with citation_count=0 from PostgreSQL, queries Semantic
+// Scholar in batches of 500 (using arXiv IDs), and updates the local records.
+//
+// This is a ONE-TIME batch job — it does not run during search or page loads.
 //
 // Usage:
 //
 //	go run cmd/enrich/main.go \
 //	  --db "postgres://user:pass@host:5432/paper?sslmode=disable" \
-//	  --email your@email.com \
-//	  --batch 50 \
+//	  --batch 500 \
 //	  --limit 100000
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -21,36 +23,35 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type openAlexWork struct {
-	DOI          string `json:"doi"`
-	CitedByCount int    `json:"cited_by_count"`
-}
-
-type openAlexResponse struct {
-	Meta struct {
-		Count int `json:"count"`
-	} `json:"meta"`
-	Results []openAlexWork `json:"results"`
+// Semantic Scholar batch response item
+type s2Paper struct {
+	PaperID       string `json:"paperId"`
+	ExternalIDs   *struct {
+		ArXiv string `json:"ArXiv"`
+	} `json:"externalIds"`
+	CitationCount int `json:"citationCount"`
 }
 
 func main() {
 	dbURL := flag.String("db", os.Getenv("DATABASE_URL"), "PostgreSQL connection URL")
-	email := flag.String("email", os.Getenv("OPENALEX_EMAIL"), "Email for OpenAlex polite pool (recommended)")
-	batchSize := flag.Int("batch", 50, "Number of papers per OpenAlex API request")
+	batchSize := flag.Int("batch", 500, "Number of papers per Semantic Scholar batch (max 500)")
 	limitPapers := flag.Int("limit", 0, "Max papers to enrich (0 = all unenriched)")
-	rateLimit := flag.Duration("rate", 100*time.Millisecond, "Delay between API requests (100ms = 10 req/sec)")
+	rateDelay := flag.Duration("rate", 1050*time.Millisecond, "Delay between API requests (Semantic Scholar: 1 req/sec unauthenticated)")
 	flag.Parse()
 
 	if *dbURL == "" {
 		*dbURL = "postgres://paper:paper@localhost:5432/paper?sslmode=disable"
+	}
+	if *batchSize > 500 {
+		*batchSize = 500 // Semantic Scholar max
 	}
 
 	log.Println("Connecting to database...")
@@ -71,10 +72,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to count unenriched papers: %v", err)
 	}
-	log.Printf("Papers needing enrichment: %d", unenrichedCount)
+	log.Printf("Papers needing citation enrichment: %d", unenrichedCount)
 
 	if unenrichedCount == 0 {
-		log.Println("No papers need enrichment. Done!")
+		log.Println("All papers already enriched. Done!")
 		return
 	}
 
@@ -82,30 +83,32 @@ func main() {
 	if *limitPapers > 0 && *limitPapers < toProcess {
 		toProcess = *limitPapers
 	}
-	log.Printf("Will enrich up to %d papers in batches of %d", toProcess, *batchSize)
+
+	estimateRequests := (toProcess + *batchSize - 1) / *batchSize
+	estimateDuration := time.Duration(estimateRequests) * *rateDelay
+	log.Printf("Will enrich up to %d papers in %d batches (~%s)", toProcess, estimateRequests, estimateDuration.Round(time.Second))
 
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
 	var (
-		processed  int
-		enriched   int
-		notFound   int
-		errors     int
-		offset     int
-		startTime  = time.Now()
-		lastLog    = time.Now()
+		processed int
+		enriched  int
+		notFound  int
+		apiErrors int
+		startTime = time.Now()
+		lastLog   = time.Now()
 	)
 
 	for processed < toProcess {
-		// Fetch a batch of external_ids needing enrichment
 		batchLimit := *batchSize
 		if processed+batchLimit > toProcess {
 			batchLimit = toProcess - processed
 		}
 
+		// Fetch a batch of arXiv IDs needing enrichment
 		rows, err := pool.Query(ctx,
-			`SELECT external_id FROM papers WHERE source = 'arxiv' AND citation_count = 0 ORDER BY external_id LIMIT $1 OFFSET $2`,
-			batchLimit, offset,
+			`SELECT external_id FROM papers WHERE source = 'arxiv' AND citation_count = 0 ORDER BY external_id LIMIT $1`,
+			batchLimit,
 		)
 		if err != nil {
 			log.Fatalf("Failed to fetch papers: %v", err)
@@ -123,152 +126,136 @@ func main() {
 		rows.Close()
 
 		if len(arxivIDs) == 0 {
-			break // no more papers
+			break
 		}
 
-		// Build DOIs for OpenAlex query
-		// arXiv papers have DOIs like: 10.48550/arXiv.{id}
-		var dois []string
-		doiToArxiv := make(map[string]string) // lowercase DOI → arXiv ID
+		// Query Semantic Scholar batch API
+		citations, err := querySemantic(httpClient, arxivIDs)
+		if err != nil {
+			log.Printf("WARN: Semantic Scholar batch failed: %v", err)
+			apiErrors++
+			// Wait longer on error (rate limit backoff)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// Update database in a single batch
+		batch := &pgx.Batch{}
 		for _, id := range arxivIDs {
-			doi := fmt.Sprintf("10.48550/arXiv.%s", id)
-			dois = append(dois, doi)
-			doiToArxiv[strings.ToLower("https://doi.org/"+doi)] = id
-		}
-
-		// Query OpenAlex
-		citations := queryOpenAlex(httpClient, dois, *email)
-
-		// Update database
-		for doiLower, count := range citations {
-			arxivID, ok := doiToArxiv[doiLower]
-			if !ok {
-				continue
-			}
-			if count > 0 {
-				_, err := pool.Exec(ctx,
-					`UPDATE papers SET citation_count = $1 WHERE external_id = $2 AND source = 'arxiv'`,
-					count, arxivID,
-				)
-				if err != nil {
-					log.Printf("WARN: Failed to update %s: %v", arxivID, err)
-					errors++
-				} else {
-					enriched++
-				}
+			count, found := citations[id]
+			if found && count > 0 {
+				batch.Queue(`UPDATE papers SET citation_count = $1 WHERE external_id = $2 AND source = 'arxiv'`, count, id)
+				enriched++
 			} else {
+				// Mark as checked (-1) so we skip it next time
+				batch.Queue(`UPDATE papers SET citation_count = -1 WHERE external_id = $1 AND source = 'arxiv' AND citation_count = 0`, id)
 				notFound++
 			}
 		}
 
-		// Mark papers not found in OpenAlex with -1 so we don't retry them
-		for _, id := range arxivIDs {
-			doi := strings.ToLower("https://doi.org/10.48550/arXiv." + id)
-			if _, found := citations[doi]; !found {
-				// Set to -1 to mark as "checked but not found in OpenAlex"
-				pool.Exec(ctx,
-					`UPDATE papers SET citation_count = -1 WHERE external_id = $1 AND source = 'arxiv' AND citation_count = 0`,
-					id,
-				)
-				notFound++
-			}
-		}
+		batchCtx, batchCancel := context.WithTimeout(ctx, 60*time.Second)
+		results := pool.SendBatch(batchCtx, batch)
+		results.Close()
+		batchCancel()
 
 		processed += len(arxivIDs)
-		offset += len(arxivIDs)
 
 		// Rate limit
-		time.Sleep(*rateLimit)
+		time.Sleep(*rateDelay)
 
-		// Progress log
+		// Progress log every 10 seconds
 		if time.Since(lastLog) > 10*time.Second {
 			elapsed := time.Since(startTime).Seconds()
 			rate := float64(processed) / elapsed
-			eta := time.Duration(float64(toProcess-processed)/rate) * time.Second
-			log.Printf("Progress: %d/%d processed, %d enriched, %d not found, %d errors | %.0f/sec | ETA %s",
-				processed, toProcess, enriched, notFound, errors, rate, eta.Round(time.Second))
+			remaining := toProcess - processed
+			eta := time.Duration(float64(remaining)/rate) * time.Second
+			log.Printf("Progress: %d/%d (%.1f%%) | enriched: %d | not found: %d | errors: %d | %.0f papers/sec | ETA: %s",
+				processed, toProcess, float64(processed)/float64(toProcess)*100,
+				enriched, notFound, apiErrors, rate, eta.Round(time.Second))
 			lastLog = time.Now()
 		}
 	}
 
 	elapsed := time.Since(startTime)
-	log.Printf("=== Enrichment Complete ===")
-	log.Printf("Processed: %d", processed)
-	log.Printf("Enriched:  %d (citation count updated)", enriched)
-	log.Printf("Not found: %d (paper not in OpenAlex)", notFound)
-	log.Printf("Errors:    %d", errors)
-	log.Printf("Duration:  %s", elapsed.Round(time.Second))
+	log.Println("=== Enrichment Complete ===")
+	log.Printf("Processed:  %d", processed)
+	log.Printf("Enriched:   %d (got citation counts)", enriched)
+	log.Printf("Not found:  %d (not in Semantic Scholar)", notFound)
+	log.Printf("API errors: %d", apiErrors)
+	log.Printf("Duration:   %s", elapsed.Round(time.Second))
 
-	// Reset -1 markers back to 0 for cleanliness
+	// Reset -1 markers back to 0 for display
+	log.Println("Resetting temporary markers...")
 	_, _ = pool.Exec(ctx, `UPDATE papers SET citation_count = 0 WHERE citation_count = -1`)
 
-	log.Println("Done!")
+	log.Println("Done! Citation sorting is now available.")
 }
 
-// queryOpenAlex fetches citation counts for a batch of DOIs from OpenAlex.
-// Returns a map of lowercase DOI URL → citation count.
-func queryOpenAlex(client *http.Client, dois []string, email string) map[string]int {
+// querySemantic queries Semantic Scholar's batch paper endpoint.
+// Input: slice of arXiv IDs (e.g. "1706.03762")
+// Returns: map of arXiv ID → citation count
+func querySemantic(client *http.Client, arxivIDs []string) (map[string]int, error) {
 	results := make(map[string]int)
-	if len(dois) == 0 {
-		return results
+
+	// Build the batch request body
+	// Semantic Scholar accepts "ARXIV:{id}" format
+	ids := make([]string, len(arxivIDs))
+	idMap := make(map[string]string) // normalized → original
+	for i, id := range arxivIDs {
+		ids[i] = fmt.Sprintf("ARXIV:%s", id)
+		idMap[strings.ToLower(id)] = id
 	}
 
-	// Build filter: doi:10.48550/arXiv.1706.03762|10.48550/arXiv.2301.00001
-	doiFilter := strings.Join(dois, "|")
+	body, _ := json.Marshal(map[string]interface{}{
+		"ids": ids,
+	})
 
-	params := url.Values{}
-	params.Set("filter", "doi:"+doiFilter)
-	params.Set("select", "doi,cited_by_count")
-	params.Set("per_page", fmt.Sprintf("%d", len(dois)))
-	if email != "" {
-		params.Set("mailto", email)
-	}
-
-	reqURL := fmt.Sprintf("https://api.openalex.org/works?%s", params.Encode())
-
-	req, err := http.NewRequest("GET", reqURL, nil)
+	reqURL := "https://api.semanticscholar.org/graph/v1/paper/batch?fields=externalIds,citationCount"
+	req, err := http.NewRequest("POST", reqURL, bytes.NewReader(body))
 	if err != nil {
-		log.Printf("WARN: Failed to create request: %v", err)
-		return results
+		return nil, fmt.Errorf("create request: %w", err)
 	}
-
-	ua := "PaperApp-Enricher/1.0"
-	if email != "" {
-		ua = fmt.Sprintf("PaperApp-Enricher/1.0 (mailto:%s)", email)
-	}
-	req.Header.Set("User-Agent", ua)
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("WARN: OpenAlex request failed: %v", err)
-		return results
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 429 {
+		return nil, fmt.Errorf("rate limited (429)")
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("WARN: OpenAlex returned %d: %s", resp.StatusCode, string(body[:min(200, len(body))]))
-		return results
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody[:min(200, len(respBody))]))
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("WARN: Failed to read response: %v", err)
-		return results
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	var oaResp openAlexResponse
-	if err := json.Unmarshal(body, &oaResp); err != nil {
-		log.Printf("WARN: Failed to parse response: %v", err)
-		return results
+	// Response is an array — some entries can be null (paper not found)
+	var papers []*s2Paper
+	if err := json.Unmarshal(respBody, &papers); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
-	for _, work := range oaResp.Results {
-		doi := strings.ToLower(work.DOI)
-		results[doi] = work.CitedByCount
+	for _, p := range papers {
+		if p == nil {
+			continue
+		}
+		// Match back to original arXiv ID
+		if p.ExternalIDs != nil && p.ExternalIDs.ArXiv != "" {
+			origID, ok := idMap[strings.ToLower(p.ExternalIDs.ArXiv)]
+			if ok {
+				results[origID] = p.CitationCount
+			}
+		}
 	}
 
-	return results
+	return results, nil
 }
 
 func min(a, b int) int {

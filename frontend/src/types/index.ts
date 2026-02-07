@@ -10,15 +10,22 @@ export interface User {
 export interface Paper {
   id: string;
   external_id: string;
-  source: 'arxiv' | 'pubmed' | 'openalex';
+  source: string;
   title: string;
   abstract: string;
   authors: Author[];
   published_date: string | null;
+  updated_date?: string | null;
   pdf_url: string;
   metadata: Record<string, unknown>;
   created_at: string;
   citation_count?: number;
+  primary_category?: string;
+  categories?: string[];
+  doi?: string;
+  journal_ref?: string;
+  comments?: string;
+  license?: string;
 }
 
 export interface Author {
@@ -65,7 +72,9 @@ export interface LibraryResult {
   limit: number;
 }
 
-export interface HTMLURLResponse {
-  html_url: string;
-  source: string;
+export interface CategoryInfo {
+  id: string;
+  name: string;
+  group: string;
+  count: number;
 }

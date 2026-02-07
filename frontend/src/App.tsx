@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Register from './pages/Register';
+import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import Search from './pages/Search';
 import Library from './pages/Library';
 import PaperDetail from './pages/PaperDetail';
-import Reader from './pages/Reader';
+
+// Redirect legacy /read/:id URLs to /paper/:id
+function ReadRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/paper/${id}`} replace />;
+}
 
 function LoadingScreen() {
   return (
@@ -23,9 +28,6 @@ function LoadingScreen() {
 
 /**
  * Hook that waits for Zustand persist to finish rehydrating from localStorage.
- * Uses the persist API (persist.hasHydrated / persist.onFinishHydration) instead
- * of storing _hasHydrated inside the store — avoids the circular-reference bug
- * where onRehydrateStorage fires before the store variable is assigned.
  */
 function useHydration() {
   const [hydrated, setHydrated] = useState(useAuthStore.persist.hasHydrated());
@@ -49,29 +51,40 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Landing page for guests, redirect to dashboard for logged-in users */}
+      {!isAuthenticated && (
+        <Route path="/" element={<Landing />} />
+      )}
+
       {/* Auth pages — redirect to home if already logged in */}
       <Route
         path="/login"
         element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
       />
-      <Route
-        path="/register"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <Register />}
-      />
+      {/* /register redirects to the unified login page */}
+      <Route path="/register" element={<Navigate to="/login" replace />} />
 
-      {/* Main app shell */}
+      {/* Main app shell (authenticated) */}
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/search" element={<Search />} />
+        {isAuthenticated && (
+          <Route path="/" element={<Dashboard />} />
+        )}
+        <Route
+          path="/search"
+          element={isAuthenticated ? <Search /> : <Navigate to="/login" replace />}
+        />
         <Route
           path="/library"
           element={isAuthenticated ? <Library /> : <Navigate to="/login" replace />}
         />
-        <Route path="/paper/:id" element={<PaperDetail />} />
+        <Route
+          path="/paper/:id"
+          element={isAuthenticated ? <PaperDetail /> : <Navigate to="/login" replace />}
+        />
       </Route>
 
-      {/* Reader — works for everyone, auth features are gated inside */}
-      <Route path="/read/:id" element={<Reader />} />
+      {/* Legacy /read/:id URLs redirect to paper detail */}
+      <Route path="/read/:id" element={<ReadRedirect />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

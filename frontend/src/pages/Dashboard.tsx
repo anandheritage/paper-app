@@ -64,7 +64,7 @@ export default function Dashboard() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search papers on arXiv, PubMed..."
+            placeholder="Search arXiv papers..."
             className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 shadow-sm transition-all"
           />
         </form>
@@ -154,7 +154,7 @@ export default function Dashboard() {
       {!isAuthenticated && (
         <div className="text-center py-12 bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-800">
           <Search className="h-12 w-12 mx-auto text-surface-300 dark:text-surface-600 mb-3" />
-          <p className="text-surface-500 dark:text-surface-400 mb-2">Search and read papers from arXiv & PubMed</p>
+          <p className="text-surface-500 dark:text-surface-400 mb-2">Search and read 940K+ arXiv research papers</p>
           <button
             onClick={() => navigate('/search')}
             className="mt-2 px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors"

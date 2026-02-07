@@ -19,7 +19,6 @@ function formatCitations(count: number): string {
 function getSourceLabel(source: string): string {
   switch (source) {
     case 'arxiv': return 'arXiv';
-    case 'pubmed': return 'PubMed';
     default: return source;
   }
 }
@@ -56,12 +55,15 @@ export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmar
             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
               paper.source === 'arxiv'
                 ? 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300'
-                : paper.source === 'pubmed'
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300'
             }`}>
               {getSourceLabel(paper.source)}
             </span>
+            {paper.primary_category && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                {paper.primary_category}
+              </span>
+            )}
             {publishDate && (
               <span className="flex items-center gap-1 text-xs text-surface-500">
                 <Calendar className="h-3 w-3" />

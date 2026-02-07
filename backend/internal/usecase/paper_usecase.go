@@ -1,28 +1,26 @@
 package usecase
 
 import (
+	"context"
+	"encoding/json"
 	"log"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/paper-app/backend/internal/domain"
-	"github.com/paper-app/backend/pkg/arxiv"
-	"github.com/paper-app/backend/pkg/openalex"
-	"github.com/paper-app/backend/pkg/pubmed"
+	"github.com/paper-app/backend/pkg/opensearch"
 )
 
 type PaperUsecase struct {
 	paperRepo domain.PaperRepository
-	arxiv     *arxiv.Client
-	pubmed    *pubmed.Client
-	openalex  *openalex.Client
+	osClient  *opensearch.Client // nil if OpenSearch is not configured
 }
 
-func NewPaperUsecase(paperRepo domain.PaperRepository, arxivClient *arxiv.Client, pubmedClient *pubmed.Client, openalexClient *openalex.Client) *PaperUsecase {
+func NewPaperUsecase(paperRepo domain.PaperRepository, osClient *opensearch.Client) *PaperUsecase {
 	return &PaperUsecase{
 		paperRepo: paperRepo,
-		arxiv:     arxivClient,
-		pubmed:    pubmedClient,
-		openalex:  openalexClient,
+		osClient:  osClient,
 	}
 }
 
@@ -33,7 +31,7 @@ type SearchResult struct {
 	Limit  int             `json:"limit"`
 }
 
-func (u *PaperUsecase) SearchPapers(query, source string, limit, offset int, sort string) (*SearchResult, error) {
+func (u *PaperUsecase) SearchPapers(query, source string, limit, offset int, sort string, categories []string) (*SearchResult, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -44,119 +42,15 @@ func (u *PaperUsecase) SearchPapers(query, source string, limit, offset int, sor
 		sort = "relevance"
 	}
 
-	// For PubMed-specific searches, use the PubMed API (we don't have PubMed
-	// bulk data locally).
-	if source == "pubmed" {
-		return u.searchPubMed(query, limit, offset)
+	// Use OpenSearch if available
+	if u.osClient != nil {
+		return u.searchOpenSearch(query, categories, limit, offset, sort)
 	}
 
-	// For all/arXiv searches, prefer local DB (contains ~2.4M arXiv papers
-	// from the Kaggle bulk import).
+	// Fallback to PostgreSQL search
 	papers, total, err := u.paperRepo.Search(query, source, limit, offset, sort)
 	if err != nil {
-		log.Printf("Local DB search failed: %v — falling back to APIs", err)
-		return u.searchAPIs(query, source, sort, limit, offset)
-	}
-
-	if total > 0 {
-		return &SearchResult{
-			Papers: papers,
-			Total:  total,
-			Offset: offset,
-			Limit:  limit,
-		}, nil
-	}
-
-	// No local results — fall back to external APIs
-	log.Printf("No local results for %q — falling back to APIs", query)
-	return u.searchAPIs(query, source, sort, limit, offset)
-}
-
-// searchAPIs tries OpenAlex first, then arXiv+PubMed as a last resort.
-func (u *PaperUsecase) searchAPIs(query, source, sort string, limit, offset int) (*SearchResult, error) {
-	// Try OpenAlex (best quality, has citation counts)
-	if u.openalex != nil {
-		results, err := u.openalex.Search(query, source, sort, limit, offset)
-		if err == nil && len(results.Papers) > 0 {
-			// Cache in local DB
-			for _, p := range results.Papers {
-				u.paperRepo.Create(p)
-			}
-			return &SearchResult{
-				Papers: results.Papers,
-				Total:  results.TotalResults,
-				Offset: offset,
-				Limit:  limit,
-			}, nil
-		}
-		if err != nil {
-			log.Printf("OpenAlex search failed: %v", err)
-		}
-	}
-
-	// Fall back to individual source APIs
-	return u.fallbackSearch(query, source, limit, offset)
-}
-
-// searchPubMed searches the PubMed API directly.
-func (u *PaperUsecase) searchPubMed(query string, limit, offset int) (*SearchResult, error) {
-	results, err := u.pubmed.Search(query, limit, offset)
-	if err != nil {
 		return nil, err
-	}
-	for _, p := range results.Papers {
-		u.paperRepo.Create(p)
-	}
-	return &SearchResult{
-		Papers: results.Papers,
-		Total:  results.TotalResults,
-		Offset: offset,
-		Limit:  limit,
-	}, nil
-}
-
-// fallbackSearch uses arXiv and/or PubMed APIs directly when OpenAlex is unavailable.
-func (u *PaperUsecase) fallbackSearch(query, source string, limit, offset int) (*SearchResult, error) {
-	var papers []*domain.Paper
-	var total int
-
-	switch source {
-	case "arxiv":
-		results, err := u.arxiv.Search(query, limit, offset)
-		if err != nil {
-			return nil, err
-		}
-		papers = results.Papers
-		total = results.TotalResults
-	case "pubmed":
-		results, err := u.pubmed.Search(query, limit, offset)
-		if err != nil {
-			return nil, err
-		}
-		papers = results.Papers
-		total = results.TotalResults
-	default:
-		// Search both sources, combine results
-		arxivResults, arxivErr := u.arxiv.Search(query, limit/2, offset/2)
-		pubmedResults, pubmedErr := u.pubmed.Search(query, limit/2, offset/2)
-
-		if arxivErr == nil {
-			papers = append(papers, arxivResults.Papers...)
-			total += arxivResults.TotalResults
-		}
-		if pubmedErr == nil {
-			papers = append(papers, pubmedResults.Papers...)
-			total += pubmedResults.TotalResults
-		}
-
-		if arxivErr != nil && pubmedErr != nil {
-			return nil, arxivErr
-		}
-	}
-
-	// Cache papers in database
-	for _, paper := range papers {
-		u.paperRepo.Create(paper)
 	}
 
 	return &SearchResult{
@@ -167,6 +61,83 @@ func (u *PaperUsecase) fallbackSearch(query, source string, limit, offset int) (
 	}, nil
 }
 
+func (u *PaperUsecase) searchOpenSearch(query string, categories []string, limit, offset int, sort string) (*SearchResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	osResult, err := u.osClient.Search(ctx, opensearch.SearchParams{
+		Query:      query,
+		Categories: categories,
+		SortBy:     sort,
+		Limit:      limit,
+		Offset:     offset,
+	})
+	if err != nil {
+		log.Printf("OpenSearch search failed, falling back to PG: %v", err)
+		// Fallback to PostgreSQL
+		papers, total, pgErr := u.paperRepo.Search(query, "", limit, offset, sort)
+		if pgErr != nil {
+			return nil, pgErr
+		}
+		return &SearchResult{Papers: papers, Total: total, Offset: offset, Limit: limit}, nil
+	}
+
+	// Convert OpenSearch hits to domain Papers
+	papers := make([]*domain.Paper, 0, len(osResult.Hits))
+	for _, hit := range osResult.Hits {
+		paper := convertOSHitToPaper(hit)
+		papers = append(papers, paper)
+	}
+
+	return &SearchResult{
+		Papers: papers,
+		Total:  osResult.Total,
+		Offset: offset,
+		Limit:  limit,
+	}, nil
+}
+
+func convertOSHitToPaper(hit *opensearch.SearchHit) *domain.Paper {
+	doc := hit.Doc
+
+	id, _ := uuid.Parse(doc.ID)
+
+	authorsJSON, _ := json.Marshal(doc.Authors)
+
+	var pubDate *time.Time
+	if doc.PublishedDate != nil {
+		if t, err := time.Parse("2006-01-02", *doc.PublishedDate); err == nil {
+			pubDate = &t
+		}
+	}
+
+	var updDate *time.Time
+	if doc.UpdatedDate != nil {
+		if t, err := time.Parse("2006-01-02", *doc.UpdatedDate); err == nil {
+			updDate = &t
+		}
+	}
+
+	return &domain.Paper{
+		ID:              id,
+		ExternalID:      doc.ExternalID,
+		Source:          doc.Source,
+		Title:           doc.Title,
+		Abstract:        doc.Abstract,
+		Authors:         authorsJSON,
+		PublishedDate:   pubDate,
+		UpdatedDate:     updDate,
+		PDFURL:          doc.PDFURL,
+		CitationCount:   doc.CitationCount,
+		PrimaryCategory: doc.PrimaryCategory,
+		Categories:      doc.Categories,
+		DOI:             doc.DOI,
+		JournalRef:      doc.JournalRef,
+		Comments:        doc.Comments,
+		License:         doc.License,
+	}
+}
+
 func (u *PaperUsecase) GetPaper(id uuid.UUID) (*domain.Paper, error) {
 	return u.paperRepo.GetByID(id)
 }
@@ -175,36 +146,86 @@ func (u *PaperUsecase) GetPaperByExternalID(externalID string) (*domain.Paper, e
 	return u.paperRepo.GetByExternalID(externalID)
 }
 
-func (u *PaperUsecase) GetOrFetchPaper(externalID, source string) (*domain.Paper, error) {
-	paper, err := u.paperRepo.GetByExternalID(externalID)
+// GetCategories returns category info with paper counts.
+func (u *PaperUsecase) GetCategories() ([]domain.CategoryInfo, error) {
+	var counts map[string]int64
+
+	if u.osClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		var err error
+		counts, err = u.osClient.GetCategoryCounts(ctx)
+		if err != nil {
+			log.Printf("OpenSearch category counts failed, falling back to PG: %v", err)
+		}
+	}
+
+	// Fallback to PostgreSQL if OpenSearch failed or unavailable
+	if counts == nil {
+		pgCounts, err := u.paperRepo.CountByCategory()
+		if err != nil {
+			return nil, err
+		}
+		counts = make(map[string]int64)
+		for _, c := range pgCounts {
+			counts[c.Category] = c.Count
+		}
+	}
+
+	// Build CategoryInfo with human-readable names
+	var categories []domain.CategoryInfo
+	for catID, count := range counts {
+		if count < 10 { // Skip very low-count categories
+			continue
+		}
+		info := domain.GetCategoryInfo(catID)
+		info.Count = count
+		categories = append(categories, info)
+	}
+
+	// Sort by count descending (simple bubble sort for small slice)
+	for i := 0; i < len(categories); i++ {
+		for j := i + 1; j < len(categories); j++ {
+			if categories[j].Count > categories[i].Count {
+				categories[i], categories[j] = categories[j], categories[i]
+			}
+		}
+	}
+
+	return categories, nil
+}
+
+// GetGroupedCategories returns categories organized by group.
+func (u *PaperUsecase) GetGroupedCategories() (map[string][]domain.CategoryInfo, error) {
+	categories, err := u.GetCategories()
 	if err != nil {
 		return nil, err
 	}
-	if paper != nil {
-		return paper, nil
+
+	grouped := make(map[string][]domain.CategoryInfo)
+	for _, cat := range categories {
+		group := cat.Group
+		if group == "" {
+			group = "Other"
+		}
+		grouped[group] = append(grouped[group], cat)
 	}
 
-	// Fetch from source
-	switch source {
-	case "arxiv":
-		paper, err = u.arxiv.GetPaper(externalID)
-	case "pubmed":
-		paper, err = u.pubmed.GetPaper(externalID)
-	default:
-		return nil, nil
-	}
+	return grouped, nil
+}
 
-	if err != nil {
-		return nil, err
+// ParseCategories extracts category IDs from a comma-separated string.
+func ParseCategories(s string) []string {
+	if s == "" {
+		return nil
 	}
-	if paper == nil {
-		return nil, nil
+	parts := strings.Split(s, ",")
+	var categories []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			categories = append(categories, p)
+		}
 	}
-
-	// Cache in database
-	if err := u.paperRepo.Create(paper); err != nil {
-		return nil, err
-	}
-
-	return paper, nil
+	return categories
 }

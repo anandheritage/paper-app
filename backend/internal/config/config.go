@@ -8,16 +8,12 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	Google   GoogleConfig
-	CORS     CORSConfig
-	OpenAlex OpenAlexConfig
-}
-
-type OpenAlexConfig struct {
-	Email string // Optional email for OpenAlex polite pool (faster responses)
+	Server     ServerConfig
+	Database   DatabaseConfig
+	JWT        JWTConfig
+	Google     GoogleConfig
+	CORS       CORSConfig
+	OpenSearch OpenSearchConfig
 }
 
 type ServerConfig struct {
@@ -46,7 +42,16 @@ type CORSConfig struct {
 	AllowedOrigins []string
 }
 
+type OpenSearchConfig struct {
+	Endpoint string // OpenSearch cluster URL (e.g. https://search-xxx.us-east-1.es.amazonaws.com)
+	Index    string // Index name (default: "papers")
+	Username string // For fine-grained access control
+	Password string
+	Enabled  bool // Whether to use OpenSearch for search (falls back to PG if false)
+}
+
 func Load() *Config {
+	osEndpoint := getEnv("OPENSEARCH_URL", "")
 	return &Config{
 		Server: ServerConfig{
 			Port:         getEnvMulti([]string{"PORT", "SERVER_PORT"}, "8080"),
@@ -69,8 +74,12 @@ func Load() *Config {
 		CORS: CORSConfig{
 			AllowedOrigins: getSliceEnv("CORS_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		},
-		OpenAlex: OpenAlexConfig{
-			Email: getEnv("OPENALEX_EMAIL", ""),
+		OpenSearch: OpenSearchConfig{
+			Endpoint: osEndpoint,
+			Index:    getEnv("OPENSEARCH_INDEX", "papers"),
+			Username: getEnv("OPENSEARCH_USER", ""),
+			Password: getEnv("OPENSEARCH_PASS", ""),
+			Enabled:  osEndpoint != "",
 		},
 	}
 }

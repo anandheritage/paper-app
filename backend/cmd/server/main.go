@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,9 +18,7 @@ import (
 	"github.com/paper-app/backend/internal/middleware"
 	"github.com/paper-app/backend/internal/repository/postgres"
 	"github.com/paper-app/backend/internal/usecase"
-	"github.com/paper-app/backend/pkg/arxiv"
-	"github.com/paper-app/backend/pkg/openalex"
-	"github.com/paper-app/backend/pkg/pubmed"
+	"github.com/paper-app/backend/pkg/opensearch"
 )
 
 func main() {
@@ -62,14 +61,31 @@ func main() {
 	userPaperRepo := postgres.NewUserPaperRepository(pool)
 	tokenRepo := postgres.NewRefreshTokenRepository(pool)
 
-	// Initialize external API clients
-	arxivClient := arxiv.NewClient()
-	pubmedClient := pubmed.NewClient()
-	openalexClient := openalex.NewClient(cfg.OpenAlex.Email)
+	// Initialize OpenSearch client (optional)
+	var osClient *opensearch.Client
+	if cfg.OpenSearch.Enabled {
+		osClient = opensearch.NewClient(opensearch.Config{
+			Endpoint: strings.TrimRight(cfg.OpenSearch.Endpoint, "/"),
+			Index:    cfg.OpenSearch.Index,
+			Username: cfg.OpenSearch.Username,
+			Password: cfg.OpenSearch.Password,
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := osClient.Ping(ctx); err != nil {
+			log.Printf("WARNING: OpenSearch not reachable (%v) — falling back to PostgreSQL search", err)
+			osClient = nil
+		} else {
+			log.Printf("Connected to OpenSearch at %s (index: %s)", cfg.OpenSearch.Endpoint, cfg.OpenSearch.Index)
+		}
+		cancel()
+	} else {
+		log.Println("OpenSearch not configured — using PostgreSQL for search")
+	}
 
 	// Initialize usecases
 	authUsecase := usecase.NewAuthUsecase(userRepo, tokenRepo, &cfg.JWT, &cfg.Google)
-	paperUsecase := usecase.NewPaperUsecase(paperRepo, arxivClient, pubmedClient, openalexClient)
+	paperUsecase := usecase.NewPaperUsecase(paperRepo, osClient)
 	libraryUsecase := usecase.NewLibraryUsecase(userPaperRepo, paperRepo)
 
 	// Initialize HTTP handler and middleware
