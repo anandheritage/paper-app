@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -15,6 +15,19 @@ import Admin from './pages/Admin';
 function ReadRedirect() {
   const { id } = useParams<{ id: string }>();
   return <Navigate to={`/paper/${id}`} replace />;
+}
+
+// Redirect to login while preserving the intended destination
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    const redirect = location.pathname + location.search;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />;
+  }
+
+  return <>{children}</>;
 }
 
 function LoadingScreen() {
@@ -71,26 +84,11 @@ export default function App() {
         {isAuthenticated && (
           <Route path="/" element={<Dashboard />} />
         )}
-        <Route
-          path="/search"
-          element={isAuthenticated ? <Search /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/library"
-          element={isAuthenticated ? <Library /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/discover"
-          element={isAuthenticated ? <Discover /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/paper/:id"
-          element={isAuthenticated ? <PaperDetail /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/admin"
-          element={isAuthenticated ? <Admin /> : <Navigate to="/login" replace />}
-        />
+        <Route path="/search" element={<RequireAuth><Search /></RequireAuth>} />
+        <Route path="/library" element={<RequireAuth><Library /></RequireAuth>} />
+        <Route path="/discover" element={<RequireAuth><Discover /></RequireAuth>} />
+        <Route path="/paper/:id" element={<RequireAuth><PaperDetail /></RequireAuth>} />
+        <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
       </Route>
 
       {/* Legacy /read/:id URLs redirect to paper detail */}

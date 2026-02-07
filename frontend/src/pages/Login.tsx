@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Mail, Lock, User, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { authApi } from '../api/auth';
@@ -15,6 +15,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/';
 
   const isSignUp = mode === 'signup';
 
@@ -34,7 +36,7 @@ export default function Login() {
         if (res?.user && res?.tokens) {
           setAuth(res.user, res.tokens);
           toast.success('Welcome to dapapers!');
-          navigate('/', { replace: true });
+          navigate(redirectTo, { replace: true });
         } else {
           toast.error('Unexpected response from server');
         }
@@ -43,7 +45,7 @@ export default function Login() {
         if (res?.user && res?.tokens) {
           setAuth(res.user, res.tokens);
           toast.success('Welcome back!');
-          navigate('/', { replace: true });
+          navigate(redirectTo, { replace: true });
         } else {
           toast.error('Unexpected response from server');
         }
@@ -63,7 +65,7 @@ export default function Login() {
       if (res?.user && res?.tokens) {
         setAuth(res.user, res.tokens);
         toast.success('Welcome!');
-        navigate('/', { replace: true });
+        navigate(redirectTo, { replace: true });
       } else {
         toast.error('Unexpected response from server');
       }
