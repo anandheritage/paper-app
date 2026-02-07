@@ -152,6 +152,7 @@ func main() {
 	params := url.Values{}
 	params.Set("filter", "locations.source.id:S4306400194") // arXiv source ID in OpenAlex
 	params.Set("per_page", strconv.Itoa(*perPage))
+	params.Set("sort", "cited_by_count:desc") // Most cited first → site is useful within minutes
 	params.Set("select", "id,title,abstract_inverted_index,authorships,cited_by_count,publication_date,publication_year,doi,locations,topics,type,open_access")
 	if *mailto != "" {
 		params.Set("mailto", *mailto)
