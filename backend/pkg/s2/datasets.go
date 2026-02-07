@@ -105,7 +105,9 @@ func (c *Client) GetLatestRelease(ctx context.Context) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("x-api-key", c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -132,7 +134,9 @@ func (c *Client) GetDataset(ctx context.Context, releaseID, datasetName string) 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("x-api-key", c.apiKey)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -28,6 +28,7 @@ export interface Paper {
   publication_types?: string[];
   s2_url?: string;
   is_open_access?: boolean;
+  tldr?: string;
   metadata?: Record<string, unknown>;
   created_at?: string;
 }

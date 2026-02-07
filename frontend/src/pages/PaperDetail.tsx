@@ -361,6 +361,16 @@ export default function PaperDetail() {
         </div>
       </div>
 
+      {/* TLDR */}
+      {paper.tldr && (
+        <div className="mt-8 pt-8 border-t border-surface-200 dark:border-surface-800">
+          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-3">TL;DR</h2>
+          <p className="text-surface-700 dark:text-surface-300 leading-relaxed bg-blue-50/50 dark:bg-blue-950/30 rounded-xl p-4 border border-blue-100 dark:border-blue-900">
+            {paper.tldr}
+          </p>
+        </div>
+      )}
+
       {/* Abstract */}
       {paper.abstract && (
         <div className="mt-8 pt-8 border-t border-surface-200 dark:border-surface-800">

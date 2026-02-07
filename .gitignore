@@ -47,3 +47,4 @@ data/
 .env.staging
 !.env.production.example
 frontend/.env.vercel
+backend/s2import

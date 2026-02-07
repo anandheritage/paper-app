@@ -83,7 +83,8 @@ const IndexMapping = `{
       "venue":                     { "type": "keyword", "fields": { "text": { "type": "text" } } },
       "publication_types":         { "type": "keyword" },
       "s2_url":                    { "type": "keyword", "index": false },
-      "is_open_access":            { "type": "boolean" }
+      "is_open_access":            { "type": "boolean" },
+      "tldr":                      { "type": "text", "analyzer": "paper_analyzer" }
     }
   }
 }`
@@ -158,6 +159,7 @@ type PaperDoc struct {
 	PublicationTypes         []string    `json:"publication_types,omitempty"`
 	S2URL                    string      `json:"s2_url,omitempty"`
 	IsOpenAccess             bool        `json:"is_open_access"`
+	TLDR                     string      `json:"tldr,omitempty"`
 }
 
 // IndexDoc indexes a single document.
