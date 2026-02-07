@@ -185,13 +185,15 @@ func (c *Client) IndexDoc(ctx context.Context, doc *PaperDoc) error {
 }
 
 // BulkIndex indexes multiple documents using the _bulk API.
-// Returns the number of successfully indexed documents.
+// Returns the number of successfully indexed documents and a non-nil error
+// if any item-level failures occur (individual errors are logged).
 func (c *Client) BulkIndex(ctx context.Context, docs []*PaperDoc) (int, error) {
 	if len(docs) == 0 {
 		return 0, nil
 	}
 
 	var buf bytes.Buffer
+	serialized := 0
 	for _, doc := range docs {
 		// Action line
 		action := map[string]interface{}{
@@ -200,17 +202,29 @@ func (c *Client) BulkIndex(ctx context.Context, docs []*PaperDoc) (int, error) {
 				"_id":    doc.ID,
 			},
 		}
-		actionJSON, _ := json.Marshal(action)
+		actionJSON, err := json.Marshal(action)
+		if err != nil {
+			log.Printf("[BulkIndex] WARN: failed to marshal action for doc %s: %v", doc.ID, err)
+			continue
+		}
 		buf.Write(actionJSON)
 		buf.WriteByte('\n')
 
 		// Document line
 		docJSON, err := json.Marshal(doc)
 		if err != nil {
+			log.Printf("[BulkIndex] WARN: failed to marshal doc %s: %v", doc.ID, err)
+			// Remove the action line we just wrote (rewind)
+			buf.Truncate(buf.Len() - len(actionJSON) - 1)
 			continue
 		}
 		buf.Write(docJSON)
 		buf.WriteByte('\n')
+		serialized++
+	}
+
+	if serialized == 0 {
+		return 0, fmt.Errorf("bulk index: all %d docs failed serialization", len(docs))
 	}
 
 	url := fmt.Sprintf("%s/_bulk", c.cfg.Endpoint)
@@ -229,27 +243,145 @@ func (c *Client) BulkIndex(ctx context.Context, docs []*PaperDoc) (int, error) {
 		return 0, fmt.Errorf("bulk index failed (%d): %s", resp.StatusCode, string(respBody[:min(500, len(respBody))]))
 	}
 
-	// Parse bulk response to count successes
+	// Parse bulk response — NEVER assume success if parsing fails
 	var bulkResp struct {
 		Errors bool `json:"errors"`
 		Items  []struct {
 			Index struct {
-				Status int `json:"status"`
+				ID     string `json:"_id"`
+				Status int    `json:"status"`
+				Error  *struct {
+					Type   string `json:"type"`
+					Reason string `json:"reason"`
+				} `json:"error"`
 			} `json:"index"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(respBody, &bulkResp); err != nil {
-		return len(docs), nil // Assume all succeeded if we can't parse
+		return 0, fmt.Errorf("bulk index: cannot parse response (sent %d docs): %w", serialized, err)
 	}
 
 	success := 0
+	failures := 0
 	for _, item := range bulkResp.Items {
 		if item.Index.Status == 200 || item.Index.Status == 201 {
 			success++
+		} else {
+			failures++
+			if item.Index.Error != nil {
+				log.Printf("[BulkIndex] FAIL doc %s: %d %s — %s",
+					item.Index.ID, item.Index.Status, item.Index.Error.Type, item.Index.Error.Reason)
+			} else {
+				log.Printf("[BulkIndex] FAIL doc %s: status %d (no error body)", item.Index.ID, item.Index.Status)
+			}
 		}
 	}
 
+	if failures > 0 {
+		return success, fmt.Errorf("bulk index: %d/%d items failed", failures, serialized)
+	}
 	return success, nil
+}
+
+// VerifyDocCitation fetches a single document by _id and returns its citation_count.
+// Used as a post-index sanity check to confirm data was persisted correctly.
+func (c *Client) VerifyDocCitation(ctx context.Context, docID string) (int, error) {
+	url := fmt.Sprintf("%s/%s/_doc/%s?_source=title,citation_count", c.cfg.Endpoint, c.cfg.Index, docID)
+	resp, err := c.doRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("verify doc: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("verify doc %s: HTTP %d", docID, resp.StatusCode)
+	}
+
+	var result struct {
+		Found  bool `json:"found"`
+		Source struct {
+			Title         string `json:"title"`
+			CitationCount int    `json:"citation_count"`
+		} `json:"_source"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return 0, fmt.Errorf("verify doc parse: %w", err)
+	}
+	if !result.Found {
+		return 0, fmt.Errorf("verify doc %s: not found", docID)
+	}
+	return result.Source.CitationCount, nil
+}
+
+// DetectStaleDocs counts how many documents have a UUID-style _id (36-char with dashes).
+// These are remnants of old PostgreSQL imports and should be 0 in a clean index.
+func (c *Client) DetectStaleDocs(ctx context.Context) (int, error) {
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"script": map[string]interface{}{
+				"script": map[string]interface{}{
+					"source": "doc['_id'].value.length() == 36 && doc['_id'].value.contains('-')",
+				},
+			},
+		},
+	}
+	body, _ := json.Marshal(query)
+
+	url := fmt.Sprintf("%s/%s/_count", c.cfg.Endpoint, c.cfg.Index)
+	resp, err := c.doRequest(ctx, "POST", url, body)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Count int `json:"count"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return 0, err
+	}
+	return result.Count, nil
+}
+
+// MaxCitationCount returns the maximum citation_count in the index.
+// Used as a quick health check — should be in the tens-of-thousands for a correct import.
+func (c *Client) MaxCitationCount(ctx context.Context) (int, error) {
+	query := map[string]interface{}{
+		"size": 0,
+		"aggs": map[string]interface{}{
+			"max_cit": map[string]interface{}{
+				"max": map[string]interface{}{
+					"field": "citation_count",
+				},
+			},
+		},
+	}
+	body, _ := json.Marshal(query)
+
+	url := fmt.Sprintf("%s/%s/_search", c.cfg.Endpoint, c.cfg.Index)
+	resp, err := c.doRequest(ctx, "POST", url, body)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Aggregations struct {
+			MaxCit struct {
+				Value *float64 `json:"value"`
+			} `json:"max_cit"`
+		} `json:"aggregations"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return 0, err
+	}
+	if result.Aggregations.MaxCit.Value == nil {
+		return 0, nil
+	}
+	return int(*result.Aggregations.MaxCit.Value), nil
 }
 
 // ---------- Search ----------

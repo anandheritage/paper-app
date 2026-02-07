@@ -157,6 +157,20 @@ func main() {
 	}
 	if count, err := osClient.GetDocCount(ctx); err == nil {
 		log.Printf("Current index doc count: %d", count)
+
+		// ── Startup health check: detect stale data from old imports ──
+		if count > 0 && !*recreate {
+			maxCit, err := osClient.MaxCitationCount(ctx)
+			if err != nil {
+				log.Printf("WARNING: Could not check max citation count: %v", err)
+			} else if maxCit < 100 {
+				log.Printf("🚨 HEALTH CHECK FAILED: max citation_count=%d (expected 10,000+)", maxCit)
+				log.Printf("   The index likely contains stale data. Run with --recreate-index to start fresh.")
+				log.Fatal("Aborting to prevent data corruption. Use --recreate-index to fix.")
+			} else {
+				log.Printf("✅ Health check passed: max citation_count=%d", maxCit)
+			}
+		}
 	}
 
 	// Build base URL
@@ -261,6 +275,25 @@ func main() {
 
 		totalPages++
 
+		// ── Post-first-batch validation: verify data actually persisted ──
+		if totalPages == 1 && len(docs) > 0 {
+			// Give OpenSearch a moment to flush
+			time.Sleep(500 * time.Millisecond)
+
+			topDoc := docs[0]
+			cit, err := osClient.VerifyDocCitation(ctx, topDoc.ID)
+			if err != nil {
+				log.Printf("🚨 VALIDATION FAILED: could not verify top paper %s: %v", topDoc.ID, err)
+				log.Fatal("Aborting: first batch did not persist. Check OpenSearch connectivity and index mapping.")
+			} else if cit != topDoc.CitationCount {
+				log.Printf("🚨 VALIDATION FAILED: doc %s expected citation_count=%d, got %d",
+					topDoc.ID, topDoc.CitationCount, cit)
+				log.Fatal("Aborting: citation data corrupted during indexing.")
+			} else {
+				log.Printf("✅ Validation passed: %q persisted with %d citations", topDoc.Title, cit)
+			}
+		}
+
 		// Progress logging
 		if totalPages%50 == 0 || totalPages <= 5 {
 			elapsed := time.Since(importStart)
@@ -270,6 +303,20 @@ func main() {
 			log.Printf("Page %d | Indexed: %d/%d (%.1f%%) | Errors: %d | Rate: %.0f/sec | ETA: %v | Cursor: %s",
 				totalPages, totalIndexed, totalPapers, pct, totalErrors, rate, eta.Round(time.Second),
 				truncate(cursor, 20))
+		}
+
+		// ── Periodic sanity check every 500 pages: max citation still healthy ──
+		if totalPages%500 == 0 {
+			maxCit, err := osClient.MaxCitationCount(ctx)
+			if err != nil {
+				log.Printf("WARNING: Periodic health check failed: %v", err)
+			} else if maxCit < 100 {
+				log.Printf("🚨 PERIODIC CHECK FAILED at page %d: max citation_count=%d (expected 10,000+)", totalPages, maxCit)
+				log.Printf("   Index may have been corrupted. Cursor to resume: %s", cursor)
+				log.Fatal("Aborting: data integrity compromised.")
+			} else {
+				log.Printf("✅ Periodic check (page %d): max citations=%d, index healthy", totalPages, maxCit)
+			}
 		}
 
 		// Next page
