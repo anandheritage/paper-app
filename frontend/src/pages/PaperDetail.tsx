@@ -131,6 +131,27 @@ export default function PaperDetail() {
     else bookmarkMutation.mutate(paperId);
   };
 
+  // Auto-save to library as "reading" when the user clicks Read PDF / Read HTML
+  const handleReadClick = () => {
+    if (!isAuthenticated || !paper) return;
+    if (isSaved) {
+      // Already in library — just touch last_read_at
+      if (userPaper && userPaper.status !== 'finished') {
+        libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
+          .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
+          .catch(() => {});
+      }
+    } else {
+      // Not in library — save it first, then mark as reading
+      libraryApi.savePaper(paper.id)
+        .then((saved) => {
+          return libraryApi.updatePaper(saved.paper_id, { status: 'reading' });
+        })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
+        .catch(() => {});
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="max-w-3xl mx-auto">
@@ -306,6 +327,7 @@ export default function PaperDetail() {
                 href={getArxivPdfUrl(paper.external_id)}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={handleReadClick}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-medium transition-colors"
               >
                 <FileText className="h-5 w-5" />
@@ -316,6 +338,7 @@ export default function PaperDetail() {
                 href={getArxivHtmlUrl(paper.external_id)}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={handleReadClick}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 font-medium hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
               >
                 <BookOpen className="h-4 w-4" />
@@ -351,6 +374,7 @@ export default function PaperDetail() {
               href={paper.pdf_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={handleReadClick}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-medium transition-colors"
             >
               <FileText className="h-5 w-5" />
