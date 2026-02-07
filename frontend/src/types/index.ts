@@ -15,20 +15,26 @@ export interface Paper {
   abstract: string;
   authors: Author[];
   published_date: string | null;
-  updated_date?: string | null;
+  year?: number;
   pdf_url: string;
-  metadata: Record<string, unknown>;
-  created_at: string;
   primary_category?: string;
   categories?: string[];
   doi?: string;
   journal_ref?: string;
-  comments?: string;
-  license?: string;
+  citation_count?: number;
+  reference_count?: number;
+  influential_citation_count?: number;
+  venue?: string;
+  publication_types?: string[];
+  s2_url?: string;
+  is_open_access?: boolean;
+  metadata?: Record<string, unknown>;
+  created_at?: string;
 }
 
 export interface Author {
   name: string;
+  authorId?: string;
   affiliation?: string;
 }
 

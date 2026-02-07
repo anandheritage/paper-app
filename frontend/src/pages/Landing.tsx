@@ -1,11 +1,16 @@
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Search, Library, Bookmark, GraduationCap, FileText, Zap, Globe, Quote } from 'lucide-react';
+import { BookOpen, Search, Library, Bookmark, GraduationCap, FileText, Zap, Globe, Quote, Award } from 'lucide-react';
 
 const FEATURES = [
   {
     icon: Search,
     title: 'Powerful Search',
-    description: 'Search across 940K+ arXiv papers by title, author, abstract, or topic — results in milliseconds.',
+    description: 'Search millions of papers by title, author, abstract, or topic — powered by Semantic Scholar data.',
+  },
+  {
+    icon: Quote,
+    title: 'Citation Insights',
+    description: 'See citation counts and influential citations. Sort by most cited to find landmark papers.',
   },
   {
     icon: Library,
@@ -16,11 +21,6 @@ const FEATURES = [
     icon: Bookmark,
     title: 'Smart Bookmarks',
     description: 'Bookmark papers for quick access. Never lose track of that important reference again.',
-  },
-  {
-    icon: Quote,
-    title: 'Smart Relevance',
-    description: 'Find exactly what you need. Our search ranks papers by title match, abstract relevance, and author name.',
   },
   {
     icon: FileText,
@@ -35,8 +35,8 @@ const FEATURES = [
 ];
 
 const STATS = [
-  { value: '940K+', label: 'Research Papers' },
-  { value: '100+', label: 'arXiv Categories' },
+  { value: '2.5M+', label: 'arXiv Papers' },
+  { value: '220M+', label: 'Total Papers' },
   { value: 'Free', label: 'Forever' },
 ];
 
@@ -84,8 +84,8 @@ export default function Landing() {
             </h1>
 
             <p className="mt-6 text-lg sm:text-xl text-surface-600 dark:text-surface-400 leading-relaxed max-w-2xl mx-auto">
-              Search 940K+ arXiv papers, save what matters, and build your personal research library. 
-              The clean, fast reading companion for PhDs, students, and professors.
+              Search millions of papers with citation counts, save what matters, and build your personal research library. 
+              Powered by Semantic Scholar. The clean, fast reading companion for PhDs, students, and professors.
             </p>
 
             <div className="mt-10">
@@ -235,7 +235,7 @@ export default function Landing() {
               <span className="font-semibold text-surface-900 dark:text-surface-100">dapapers</span>
             </div>
             <p className="text-sm text-surface-400">
-              Papers sourced from <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a> under their terms of use.
+              Data from <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">Semantic Scholar</a> &amp; <a href="https://arxiv.org" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">arXiv.org</a>.
             </p>
           </div>
         </div>

@@ -16,10 +16,10 @@ import (
 
 // Config holds OpenSearch connection settings.
 type Config struct {
-	Endpoint string // e.g. "https://search-xxx.us-east-1.es.amazonaws.com"
+	Endpoint string // e.g. "http://localhost:9200"
 	Index    string // e.g. "papers"
-	Username string // for fine-grained access control (optional)
-	Password string // for fine-grained access control (optional)
+	Username string // optional
+	Password string // optional
 }
 
 // Client communicates with an OpenSearch cluster.
@@ -41,11 +41,11 @@ func NewClient(cfg Config) *Client {
 // ---------- Index Management ----------
 
 // IndexMapping defines the OpenSearch index mapping for papers.
-// Optimized for search relevance, category filtering, and sorting.
+// Optimized for S2 (Semantic Scholar) data with citation counts, fields of study, etc.
 const IndexMapping = `{
   "settings": {
     "number_of_shards": 2,
-    "number_of_replicas": 1,
+    "number_of_replicas": 0,
     "analysis": {
       "analyzer": {
         "paper_analyzer": {
@@ -58,27 +58,32 @@ const IndexMapping = `{
   },
   "mappings": {
     "properties": {
-      "id":               { "type": "keyword" },
-      "external_id":      { "type": "keyword" },
-      "source":           { "type": "keyword" },
-      "title":            { "type": "text", "analyzer": "paper_analyzer", "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } } },
-      "abstract":         { "type": "text", "analyzer": "paper_analyzer" },
+      "id":                        { "type": "keyword" },
+      "external_id":               { "type": "keyword" },
+      "source":                    { "type": "keyword" },
+      "title":                     { "type": "text", "analyzer": "paper_analyzer", "fields": { "keyword": { "type": "keyword", "ignore_above": 512 } } },
+      "abstract":                  { "type": "text", "analyzer": "paper_analyzer" },
       "authors": {
         "type": "nested",
         "properties": {
-          "name":        { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
-          "affiliation": { "type": "text" }
+          "name":      { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+          "authorId":  { "type": "keyword" }
         }
       },
-      "primary_category": { "type": "keyword" },
-      "categories":       { "type": "keyword" },
-      "published_date":   { "type": "date", "format": "yyyy-MM-dd||epoch_millis" },
-      "updated_date":     { "type": "date", "format": "yyyy-MM-dd||epoch_millis" },
-      "doi":              { "type": "keyword" },
-      "journal_ref":      { "type": "text" },
-      "comments":         { "type": "text" },
-      "license":          { "type": "keyword" },
-      "pdf_url":          { "type": "keyword", "index": false }
+      "published_date":            { "type": "date", "format": "yyyy-MM-dd||yyyy-MM||yyyy||epoch_millis" },
+      "year":                      { "type": "integer" },
+      "pdf_url":                   { "type": "keyword", "index": false },
+      "primary_category":          { "type": "keyword" },
+      "categories":                { "type": "keyword" },
+      "doi":                       { "type": "keyword" },
+      "journal_ref":               { "type": "text" },
+      "citation_count":            { "type": "integer" },
+      "reference_count":           { "type": "integer" },
+      "influential_citation_count": { "type": "integer" },
+      "venue":                     { "type": "keyword", "fields": { "text": { "type": "text" } } },
+      "publication_types":         { "type": "keyword" },
+      "s2_url":                    { "type": "keyword", "index": false },
+      "is_open_access":            { "type": "boolean" }
     }
   }
 }`
@@ -131,22 +136,28 @@ func (c *Client) DeleteIndex(ctx context.Context) error {
 // ---------- Document Operations ----------
 
 // PaperDoc is the document structure stored in OpenSearch.
+// Fields are aligned with Semantic Scholar data model.
 type PaperDoc struct {
-	ID              string      `json:"id"`
-	ExternalID      string      `json:"external_id"`
-	Source          string      `json:"source"`
-	Title           string      `json:"title"`
-	Abstract        string      `json:"abstract"`
-	Authors         interface{} `json:"authors"`
-	PrimaryCategory string      `json:"primary_category"`
-	Categories      []string    `json:"categories"`
-	PublishedDate   *string     `json:"published_date,omitempty"`
-	UpdatedDate     *string     `json:"updated_date,omitempty"`
-	DOI             string      `json:"doi,omitempty"`
-	JournalRef      string      `json:"journal_ref,omitempty"`
-	Comments        string      `json:"comments,omitempty"`
-	License         string      `json:"license,omitempty"`
-	PDFURL          string      `json:"pdf_url,omitempty"`
+	ID                       string      `json:"id"`
+	ExternalID               string      `json:"external_id"`
+	Source                   string      `json:"source"`
+	Title                    string      `json:"title"`
+	Abstract                 string      `json:"abstract"`
+	Authors                  interface{} `json:"authors"`
+	PublishedDate            *string     `json:"published_date,omitempty"`
+	Year                     int         `json:"year,omitempty"`
+	PDFURL                   string      `json:"pdf_url,omitempty"`
+	PrimaryCategory          string      `json:"primary_category,omitempty"`
+	Categories               []string    `json:"categories,omitempty"`
+	DOI                      string      `json:"doi,omitempty"`
+	JournalRef               string      `json:"journal_ref,omitempty"`
+	CitationCount            int         `json:"citation_count"`
+	ReferenceCount           int         `json:"reference_count"`
+	InfluentialCitationCount int         `json:"influential_citation_count"`
+	Venue                    string      `json:"venue,omitempty"`
+	PublicationTypes         []string    `json:"publication_types,omitempty"`
+	S2URL                    string      `json:"s2_url,omitempty"`
+	IsOpenAccess             bool        `json:"is_open_access"`
 }
 
 // IndexDoc indexes a single document.
@@ -245,7 +256,7 @@ func (c *Client) BulkIndex(ctx context.Context, docs []*PaperDoc) (int, error) {
 type SearchParams struct {
 	Query      string
 	Categories []string
-	SortBy     string // "relevance", "date"
+	SortBy     string // "relevance", "citations", "date"
 	Limit      int
 	Offset     int
 }
@@ -322,6 +333,93 @@ func (c *Client) Search(ctx context.Context, params SearchParams) (*SearchResult
 	return result, nil
 }
 
+// GetByID retrieves a single document by its OpenSearch _id.
+func (c *Client) GetByID(ctx context.Context, id string) (*PaperDoc, error) {
+	url := fmt.Sprintf("%s/%s/_doc/%s", c.cfg.Endpoint, c.cfg.Index, id)
+	resp, err := c.doRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get by id: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil // Not found
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("get by id failed (%d): %s", resp.StatusCode, string(respBody[:min(300, len(respBody))]))
+	}
+
+	var docResp struct {
+		Found  bool     `json:"found"`
+		Source PaperDoc `json:"_source"`
+	}
+	if err := json.Unmarshal(respBody, &docResp); err != nil {
+		return nil, fmt.Errorf("parse doc response: %w", err)
+	}
+
+	if !docResp.Found {
+		return nil, nil
+	}
+
+	return &docResp.Source, nil
+}
+
+// SearchByExternalID finds a paper by its external ID (e.g., arXiv ID).
+func (c *Client) SearchByExternalID(ctx context.Context, externalID string) (*PaperDoc, error) {
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"term": map[string]interface{}{
+				"external_id": externalID,
+			},
+		},
+		"size": 1,
+	}
+
+	body, err := json.Marshal(query)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/%s/_search", c.cfg.Endpoint, c.cfg.Index)
+	resp, err := c.doRequest(ctx, "POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("search by external_id failed (%d)", resp.StatusCode)
+	}
+
+	var esResp struct {
+		Hits struct {
+			Hits []struct {
+				Source PaperDoc `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(respBody, &esResp); err != nil {
+		return nil, err
+	}
+
+	if len(esResp.Hits.Hits) == 0 {
+		return nil, nil
+	}
+
+	return &esResp.Hits.Hits[0].Source, nil
+}
+
 // buildSearchQuery constructs the OpenSearch query DSL.
 func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 	query := map[string]interface{}{
@@ -334,7 +432,6 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 	var filter []interface{}
 
 	if params.Query != "" {
-		// Use a combination of should clauses for better relevance:
 		// 1. Exact phrase match on title (highest boost)
 		should = append(should, map[string]interface{}{
 			"match_phrase": map[string]interface{}{
@@ -378,6 +475,15 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 				},
 			},
 		})
+		// 5. Venue match
+		should = append(should, map[string]interface{}{
+			"match": map[string]interface{}{
+				"venue.text": map[string]interface{}{
+					"query": params.Query,
+					"boost": 1.5,
+				},
+			},
+		})
 	}
 
 	if len(params.Categories) > 0 {
@@ -409,6 +515,12 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 
 	// Sorting
 	switch params.SortBy {
+	case "citations":
+		query["sort"] = []interface{}{
+			map[string]interface{}{"citation_count": map[string]string{"order": "desc"}},
+			"_score",
+			map[string]interface{}{"published_date": map[string]string{"order": "desc", "missing": "_last"}},
+		}
 	case "date":
 		query["sort"] = []interface{}{
 			map[string]interface{}{"published_date": map[string]string{"order": "desc", "missing": "_last"}},
@@ -418,6 +530,7 @@ func (c *Client) buildSearchQuery(params SearchParams) map[string]interface{} {
 		if params.Query != "" {
 			query["sort"] = []interface{}{
 				"_score",
+				map[string]interface{}{"citation_count": map[string]string{"order": "desc"}},
 				map[string]interface{}{"published_date": map[string]string{"order": "desc", "missing": "_last"}},
 			}
 		} else {
@@ -449,7 +562,7 @@ func (c *Client) GetCategoryCounts(ctx context.Context) (map[string]int64, error
 		"aggs": map[string]interface{}{
 			"categories": map[string]interface{}{
 				"terms": map[string]interface{}{
-					"field": "primary_category",
+					"field": "categories",
 					"size":  200,
 				},
 			},
@@ -496,6 +609,29 @@ func (c *Client) GetCategoryCounts(ctx context.Context) (map[string]int64, error
 		counts[b.Key] = b.DocCount
 	}
 	return counts, nil
+}
+
+// GetDocCount returns the total number of documents in the index.
+func (c *Client) GetDocCount(ctx context.Context) (int64, error) {
+	url := fmt.Sprintf("%s/%s/_count", c.cfg.Endpoint, c.cfg.Index)
+	resp, err := c.doRequest(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	var countResp struct {
+		Count int64 `json:"count"`
+	}
+	if err := json.Unmarshal(respBody, &countResp); err != nil {
+		return 0, err
+	}
+	return countResp.Count, nil
 }
 
 // Ping checks if the OpenSearch cluster is reachable.

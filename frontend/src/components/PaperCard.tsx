@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Users, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Calendar, Users, ExternalLink, Bookmark, BookmarkCheck, Quote } from 'lucide-react';
 import type { Paper } from '../types';
 
 interface PaperCardProps {
@@ -13,8 +13,15 @@ interface PaperCardProps {
 function getSourceLabel(source: string): string {
   switch (source) {
     case 'arxiv': return 'arXiv';
+    case 's2': return 'S2';
     default: return source;
   }
+}
+
+function formatCitations(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
 }
 
 export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmark, compact }: PaperCardProps) {
@@ -32,7 +39,11 @@ export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmar
 
   const publishDate = paper.published_date
     ? new Date(paper.published_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : paper.year
+    ? String(paper.year)
     : null;
+
+  const citationCount = paper.citation_count ?? 0;
 
   return (
     <article
@@ -41,7 +52,7 @@ export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmar
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          {/* Source badge + category + date */}
+          {/* Source badge + category + date + citations */}
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
               paper.source === 'arxiv'
@@ -55,10 +66,21 @@ export default function PaperCard({ paper, isBookmarked, onBookmark, onUnbookmar
                 {paper.primary_category}
               </span>
             )}
+            {paper.venue && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                {paper.venue}
+              </span>
+            )}
             {publishDate && (
               <span className="flex items-center gap-1 text-xs text-surface-500">
                 <Calendar className="h-3 w-3" />
                 {publishDate}
+              </span>
+            )}
+            {citationCount > 0 && (
+              <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                <Quote className="h-3 w-3" />
+                {formatCitations(citationCount)} cited
               </span>
             )}
           </div>

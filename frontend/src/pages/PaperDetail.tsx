@@ -1,13 +1,17 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Tag } from 'lucide-react';
+import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Tag, Quote, Award, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { papersApi } from '../api/papers';
 import { libraryApi } from '../api/library';
 import { useAuthStore } from '../stores/authStore';
 import { PaperDetailSkeleton } from '../components/Skeleton';
 
-
+function formatCitations(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
+}
 
 function getArxivAbsUrl(externalId: string): string {
   return `https://arxiv.org/abs/${externalId}`;
@@ -121,19 +125,14 @@ export default function PaperDetail() {
 
   const publishDate = paper.published_date
     ? new Date(paper.published_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : paper.year
+    ? String(paper.year)
     : null;
 
-  // Extract categories — prefer the new top-level field, fallback to metadata
-  let categories: string[] = paper.categories ?? [];
-  if (categories.length === 0 && paper.metadata) {
-    try {
-      const meta = typeof paper.metadata === 'string' ? JSON.parse(paper.metadata) : paper.metadata;
-      if (Array.isArray(meta.categories)) {
-        categories = meta.categories;
-      }
-    } catch { /* ignore */ }
-  }
-
+  const categories: string[] = paper.categories ?? [];
+  const citationCount = paper.citation_count ?? 0;
+  const referenceCount = paper.reference_count ?? 0;
+  const influentialCount = paper.influential_citation_count ?? 0;
   const isArxiv = paper.source === 'arxiv';
 
   return (
@@ -157,7 +156,20 @@ export default function PaperDetail() {
           }`}>
             {isArxiv ? 'arXiv' : paper.source}
           </span>
-          <span className="text-sm text-surface-400">{paper.external_id}</span>
+          {paper.external_id && (
+            <span className="text-sm text-surface-400">{paper.external_id}</span>
+          )}
+          {paper.venue && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+              {paper.venue}
+            </span>
+          )}
+          {paper.is_open_access && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+              <Globe className="h-3 w-3" />
+              Open Access
+            </span>
+          )}
         </div>
 
         <h1 className="text-2xl sm:text-3xl font-bold text-surface-900 dark:text-surface-100 leading-tight">
@@ -169,8 +181,8 @@ export default function PaperDetail() {
           <div className="flex items-start gap-2">
             <Users className="h-5 w-5 text-surface-400 mt-0.5 flex-shrink-0" />
             <div className="flex flex-wrap gap-x-2 gap-y-1">
-              {authors.map((author: { name: string; affiliation?: string }, i: number) => (
-                <span key={i} className="text-sm text-surface-600 dark:text-surface-400" title={author.affiliation}>
+              {authors.map((author: { name: string; authorId?: string }, i: number) => (
+                <span key={i} className="text-sm text-surface-600 dark:text-surface-400">
                   {author.name}{i < authors.length - 1 ? ',' : ''}
                 </span>
               ))}
@@ -182,6 +194,31 @@ export default function PaperDetail() {
           <div className="flex items-center gap-2 text-sm text-surface-500">
             <Calendar className="h-4 w-4" />
             {publishDate}
+          </div>
+        )}
+
+        {/* Citation stats */}
+        {(citationCount > 0 || referenceCount > 0) && (
+          <div className="flex items-center gap-4 flex-wrap">
+            {citationCount > 0 && (
+              <div className="flex items-center gap-1.5 text-sm">
+                <Quote className="h-4 w-4 text-amber-500" />
+                <span className="font-semibold text-amber-600 dark:text-amber-400">{formatCitations(citationCount)}</span>
+                <span className="text-surface-500">citations</span>
+              </div>
+            )}
+            {influentialCount > 0 && (
+              <div className="flex items-center gap-1.5 text-sm">
+                <Award className="h-4 w-4 text-orange-500" />
+                <span className="font-semibold text-orange-600 dark:text-orange-400">{formatCitations(influentialCount)}</span>
+                <span className="text-surface-500">influential</span>
+              </div>
+            )}
+            {referenceCount > 0 && (
+              <div className="flex items-center gap-1.5 text-sm text-surface-500">
+                <span className="font-medium">{referenceCount}</span> references
+              </div>
+            )}
           </div>
         )}
 
@@ -197,7 +234,19 @@ export default function PaperDetail() {
           </div>
         )}
 
-        {/* DOI / Journal Ref */}
+        {/* Publication types */}
+        {paper.publication_types && paper.publication_types.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <FileText className="h-4 w-4 text-surface-400 flex-shrink-0" />
+            {paper.publication_types.map((pt) => (
+              <span key={pt} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                {pt}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* DOI / Journal */}
         {(paper.doi || paper.journal_ref) && (
           <div className="flex flex-wrap items-center gap-3 text-sm text-surface-500">
             {paper.doi && (
@@ -216,9 +265,9 @@ export default function PaperDetail() {
           </div>
         )}
 
-        {/* Action buttons — links go directly to arXiv */}
+        {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-3 pt-2">
-          {isArxiv && (
+          {isArxiv && paper.external_id && (
             <>
               <a
                 href={getArxivPdfUrl(paper.external_id)}
@@ -250,6 +299,18 @@ export default function PaperDetail() {
                 View on arXiv
               </a>
             </>
+          )}
+
+          {paper.s2_url && (
+            <a
+              href={paper.s2_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 text-surface-700 dark:text-surface-300 font-medium hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Semantic Scholar
+            </a>
           )}
 
           {!isArxiv && paper.pdf_url && (

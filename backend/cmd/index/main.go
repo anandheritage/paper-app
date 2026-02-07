@@ -193,8 +193,6 @@ func main() {
 			Categories:      categories,
 			DOI:             doi,
 			JournalRef:      journalRef,
-			Comments:        comments,
-			License:         license,
 			PDFURL:          pdfURL,
 		}
 
@@ -218,10 +216,7 @@ func main() {
 			d := publishedDate.Format("2006-01-02")
 			doc.PublishedDate = &d
 		}
-		if updatedDate != nil {
-			d := updatedDate.Format("2006-01-02")
-			doc.UpdatedDate = &d
-		}
+		_ = updatedDate // UpdatedDate not in current PaperDoc; field kept for PG compat
 
 		batch = append(batch, doc)
 

@@ -192,8 +192,8 @@ func (h *Handler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	source := r.URL.Query().Get("source")
-	sortBy := r.URL.Query().Get("sort")       // "relevance", "citations", "date"
-	catFilter := r.URL.Query().Get("categories") // comma-separated: "cs.AI,cs.LG"
+	sortBy := r.URL.Query().Get("sort")         // "relevance", "citations", "date"
+	catFilter := r.URL.Query().Get("categories") // comma-separated: "Computer Science,Mathematics"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
@@ -212,7 +212,7 @@ func (h *Handler) SearchPapers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// GetCategories returns all arXiv categories with paper counts.
+// GetCategories returns all categories with paper counts.
 func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
 	categories, err := h.paperUsecase.GetCategories()
 	if err != nil {
@@ -222,7 +222,7 @@ func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, categories)
 }
 
-// GetGroupedCategories returns categories organized by group (CS, Math, Physics, etc.).
+// GetGroupedCategories returns categories organized by group.
 func (h *Handler) GetGroupedCategories(w http.ResponseWriter, r *http.Request) {
 	grouped, err := h.paperUsecase.GetGroupedCategories()
 	if err != nil {
@@ -232,12 +232,21 @@ func (h *Handler) GetGroupedCategories(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, grouped)
 }
 
-
+// GetPaper returns a paper by ID. Tries OpenSearch first (corpusid), then PostgreSQL (UUID).
 func (h *Handler) GetPaper(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
+
+	// Try OpenSearch first (primary source for S2 data)
+	doc, err := h.paperUsecase.GetPaperFromOS(idStr)
+	if err == nil && doc != nil {
+		writeJSON(w, http.StatusOK, doc)
+		return
+	}
+
+	// Fallback: try PostgreSQL by UUID
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		writeError(w, http.StatusNotFound, "Paper not found")
 		return
 	}
 
@@ -276,6 +285,8 @@ func (h *Handler) GetLibrary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// SaveToLibrary saves a paper to the user's library.
+// Accepts either a PG UUID or an OpenSearch corpusid/arXiv ID.
 func (h *Handler) SaveToLibrary(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
@@ -284,17 +295,19 @@ func (h *Handler) SaveToLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paperIDStr := chi.URLParam(r, "paperId")
-	paperID, err := uuid.Parse(paperIDStr)
+
+	// Resolve the paper ID to a PG UUID (auto-creates PG record if needed)
+	paperID, err := h.paperUsecase.EnsurePaperInDB(paperIDStr)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		if err == usecase.ErrPaperNotFound || err == usecase.ErrPaperNotFoundOS {
+			writeError(w, http.StatusNotFound, "Paper not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to save paper")
+		}
 		return
 	}
 
 	userPaper, err := h.libraryUsecase.SavePaper(userID, paperID)
-	if err == usecase.ErrPaperNotFound {
-		writeError(w, http.StatusNotFound, "Paper not found")
-		return
-	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to save paper")
 		return
@@ -311,9 +324,11 @@ func (h *Handler) RemoveFromLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paperIDStr := chi.URLParam(r, "paperId")
-	paperID, err := uuid.Parse(paperIDStr)
+
+	// Resolve ID
+	paperID, err := h.paperUsecase.EnsurePaperInDB(paperIDStr)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		writeError(w, http.StatusNotFound, "Paper not in library")
 		return
 	}
 
@@ -338,9 +353,9 @@ func (h *Handler) UpdateLibraryPaper(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paperIDStr := chi.URLParam(r, "paperId")
-	paperID, err := uuid.Parse(paperIDStr)
+	paperID, err := h.paperUsecase.EnsurePaperInDB(paperIDStr)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		writeError(w, http.StatusNotFound, "Paper not found")
 		return
 	}
 
@@ -384,6 +399,8 @@ func (h *Handler) GetBookmarks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// BookmarkPaper bookmarks a paper for the user.
+// Accepts either a PG UUID or an OpenSearch corpusid/arXiv ID.
 func (h *Handler) BookmarkPaper(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
@@ -392,17 +409,19 @@ func (h *Handler) BookmarkPaper(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paperIDStr := chi.URLParam(r, "paperId")
-	paperID, err := uuid.Parse(paperIDStr)
+
+	// Resolve the paper ID to a PG UUID
+	paperID, err := h.paperUsecase.EnsurePaperInDB(paperIDStr)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		if err == usecase.ErrPaperNotFound || err == usecase.ErrPaperNotFoundOS {
+			writeError(w, http.StatusNotFound, "Paper not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to bookmark paper")
+		}
 		return
 	}
 
 	userPaper, err := h.libraryUsecase.BookmarkPaper(userID, paperID)
-	if err == usecase.ErrPaperNotFound {
-		writeError(w, http.StatusNotFound, "Paper not found")
-		return
-	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to bookmark paper")
 		return
@@ -419,9 +438,9 @@ func (h *Handler) UnbookmarkPaper(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paperIDStr := chi.URLParam(r, "paperId")
-	paperID, err := uuid.Parse(paperIDStr)
+	paperID, err := h.paperUsecase.EnsurePaperInDB(paperIDStr)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid paper ID")
+		writeError(w, http.StatusNotFound, "Paper not in library")
 		return
 	}
 

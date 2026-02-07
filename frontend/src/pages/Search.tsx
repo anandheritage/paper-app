@@ -11,6 +11,7 @@ import { ListSkeleton } from '../components/Skeleton';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
+  { value: 'citations', label: 'Most Cited' },
   { value: 'date', label: 'Newest First' },
 ];
 
@@ -127,7 +128,7 @@ export default function Search() {
       <div>
         <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Search Papers</h1>
         <p className="text-surface-500 dark:text-surface-400 mt-1">
-          Search across arXiv research papers by title, author, or topic
+          Search across millions of research papers powered by Semantic Scholar
         </p>
       </div>
 
@@ -239,7 +240,6 @@ export default function Search() {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([group, cats]) => (
               <div key={group}>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2">{group}</h4>
                 <div className="flex flex-wrap gap-1.5">
                   {cats
                     .sort((a, b) => b.count - a.count)
@@ -339,7 +339,7 @@ export default function Search() {
           <SearchIcon className="h-16 w-16 mx-auto text-surface-300 dark:text-surface-700 mb-4" />
           <h3 className="text-lg font-medium text-surface-900 dark:text-surface-100 mb-1">Search academic papers</h3>
           <p className="text-surface-500 dark:text-surface-400">
-            Enter keywords to search across arXiv research papers
+            Search across millions of papers from arXiv and more
           </p>
         </div>
       )}
