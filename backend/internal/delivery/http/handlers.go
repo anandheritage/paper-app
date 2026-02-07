@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -455,4 +456,31 @@ func (h *Handler) UnbookmarkPaper(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Discover handler
+
+func (h *Handler) GetDiscover(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	seed := r.URL.Query().Get("seed")
+	if seed == "" {
+		// Default: date + user ID for daily consistency per user
+		seed = time.Now().Format("2006-01-02") + userID.String()
+	}
+
+	categories, _ := h.libraryUsecase.GetUserCategories(userID)
+	excludeIDs, _ := h.libraryUsecase.GetUserPaperExternalIDs(userID)
+
+	result, err := h.paperUsecase.Discover(categories, excludeIDs, seed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get suggestions")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }

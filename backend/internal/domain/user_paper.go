@@ -36,6 +36,9 @@ type UserPaperRepository interface {
 	GetByUser(userID uuid.UUID, status string, bookmarked *bool, limit, offset int) ([]*UserPaper, int, error)
 	Update(userPaper *UserPaper) error
 	Delete(userID, paperID uuid.UUID) error
+	EnforceReadingLimit(userID uuid.UUID, maxReading int) error
+	GetUserCategories(userID uuid.UUID) ([]string, error)
+	GetUserPaperExternalIDs(userID uuid.UUID) ([]string, error)
 }
 
 type ReadingSessionRepository interface {

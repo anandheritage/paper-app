@@ -216,6 +216,49 @@ func (u *PaperUsecase) EnsurePaperInDB(idStr string) (uuid.UUID, error) {
 	return uuid.Nil, ErrPaperNotFound
 }
 
+// ---------- Discover ----------
+
+// DiscoverResult is the response for the discover/suggestion endpoint.
+type DiscoverResult struct {
+	PaperOfTheDay *opensearch.PaperDoc   `json:"paper_of_the_day"`
+	Suggestions   []*opensearch.PaperDoc `json:"suggestions"`
+	Categories    []string               `json:"based_on_categories"`
+}
+
+// Discover returns random paper suggestions based on user interest categories.
+// Uses a seed for deterministic randomness (same result within a seed value, e.g. daily).
+func (u *PaperUsecase) Discover(categories []string, excludeExternalIDs []string, seed string) (*DiscoverResult, error) {
+	if u.osClient == nil {
+		return &DiscoverResult{}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	papers, err := u.osClient.GetRandomPapers(ctx, categories, excludeExternalIDs, seed, 6)
+	if err != nil {
+		log.Printf("Discover search failed: %v", err)
+		// Try without categories as fallback (popular random papers)
+		papers, err = u.osClient.GetRandomPapers(ctx, nil, excludeExternalIDs, seed, 6)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	result := &DiscoverResult{
+		Categories: categories,
+	}
+
+	if len(papers) > 0 {
+		result.PaperOfTheDay = papers[0]
+		if len(papers) > 1 {
+			result.Suggestions = papers[1:]
+		}
+	}
+
+	return result, nil
+}
+
 // ---------- Categories ----------
 
 // GetCategories returns category info with paper counts.

@@ -74,6 +74,9 @@ func NewRouter(handler *Handler, authMiddleware *middleware.AuthMiddleware, allo
 				r.Post("/{paperId}", handler.BookmarkPaper)
 				r.Delete("/{paperId}", handler.UnbookmarkPaper)
 			})
+
+			// Discover route
+			r.Get("/discover", handler.GetDiscover)
 		})
 	})
 

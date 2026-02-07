@@ -202,3 +202,79 @@ func (r *UserPaperRepository) Delete(userID, paperID uuid.UUID) error {
 	_, err := r.db.Exec(ctx, query, userID, paperID)
 	return err
 }
+
+func (r *UserPaperRepository) EnforceReadingLimit(userID uuid.UUID, maxReading int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE user_papers SET status = 'saved'
+		WHERE user_id = $1 AND id IN (
+			SELECT id FROM user_papers
+			WHERE user_id = $1 AND status = 'reading'
+			ORDER BY COALESCE(last_read_at, saved_at) DESC
+			OFFSET $2
+		)
+	`
+	_, err := r.db.Exec(ctx, query, userID, maxReading)
+	return err
+}
+
+func (r *UserPaperRepository) GetUserCategories(userID uuid.UUID) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT DISTINCT cat
+		FROM user_papers up
+		JOIN papers p ON up.paper_id = p.id
+		CROSS JOIN LATERAL unnest(p.categories) AS cat
+		WHERE up.user_id = $1
+		  AND p.categories IS NOT NULL
+		LIMIT 20
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []string
+	for rows.Next() {
+		var cat string
+		if err := rows.Scan(&cat); err != nil {
+			return nil, err
+		}
+		categories = append(categories, cat)
+	}
+	return categories, nil
+}
+
+func (r *UserPaperRepository) GetUserPaperExternalIDs(userID uuid.UUID) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		SELECT p.external_id
+		FROM user_papers up
+		JOIN papers p ON up.paper_id = p.id
+		WHERE up.user_id = $1
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}

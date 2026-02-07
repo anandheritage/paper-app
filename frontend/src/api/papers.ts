@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Paper, SearchResult, CategoryInfo } from '../types';
+import type { Paper, SearchResult, CategoryInfo, DiscoverResult } from '../types';
 
 export const papersApi = {
   search(
@@ -33,5 +33,11 @@ export const papersApi = {
 
   getGroupedCategories(): Promise<Record<string, CategoryInfo[]>> {
     return api.get('/api/v1/papers/categories/grouped');
+  },
+
+  getDiscover(seed?: string): Promise<DiscoverResult> {
+    const params: Record<string, string | number> = {};
+    if (seed) params.seed = seed;
+    return api.get('/api/v1/discover', params);
   },
 };

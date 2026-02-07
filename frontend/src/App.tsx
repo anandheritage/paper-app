@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Search from './pages/Search';
 import Library from './pages/Library';
 import PaperDetail from './pages/PaperDetail';
+import Discover from './pages/Discover';
 
 // Redirect legacy /read/:id URLs to /paper/:id
 function ReadRedirect() {
@@ -76,6 +77,10 @@ export default function App() {
         <Route
           path="/library"
           element={isAuthenticated ? <Library /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/discover"
+          element={isAuthenticated ? <Discover /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/paper/:id"

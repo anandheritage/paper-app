@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Search, BookOpen, Library, Home, LogOut, LogIn, Moon, Sun } from 'lucide-react';
+import { Search, BookOpen, Library, Home, LogOut, LogIn, Moon, Sun, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
 import { authApi } from '../api/auth';
@@ -25,6 +25,7 @@ export default function Layout() {
     { to: '/', icon: Home, label: 'Home' },
     { to: '/search', icon: Search, label: 'Search' },
     { to: '/library', icon: Library, label: 'Library' },
+    { to: '/discover', icon: Sparkles, label: 'Discover' },
   ];
 
   return (

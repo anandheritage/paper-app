@@ -613,6 +613,119 @@ func (c *Client) GetCategoryCounts(ctx context.Context) (map[string]int64, error
 	return counts, nil
 }
 
+// GetRandomPapers returns random papers filtered by categories, excluding specific external IDs.
+// Uses function_score with random_score for deterministic randomness based on seed.
+func (c *Client) GetRandomPapers(ctx context.Context, categories []string, excludeExternalIDs []string, seed string, limit int) ([]*PaperDoc, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
+	var filter []interface{}
+	var mustNot []interface{}
+
+	if len(categories) > 0 {
+		filter = append(filter, map[string]interface{}{
+			"terms": map[string]interface{}{
+				"categories": categories,
+			},
+		})
+	}
+
+	// Minimum citation count for quality suggestions
+	filter = append(filter, map[string]interface{}{
+		"range": map[string]interface{}{
+			"citation_count": map[string]interface{}{
+				"gte": 5,
+			},
+		},
+	})
+
+	if len(excludeExternalIDs) > 0 {
+		mustNot = append(mustNot, map[string]interface{}{
+			"terms": map[string]interface{}{
+				"external_id": excludeExternalIDs,
+			},
+		})
+	}
+
+	boolQuery := map[string]interface{}{}
+	if len(filter) > 0 {
+		boolQuery["filter"] = filter
+	}
+	if len(mustNot) > 0 {
+		boolQuery["must_not"] = mustNot
+	}
+
+	var innerQuery interface{}
+	if len(boolQuery) > 0 {
+		innerQuery = map[string]interface{}{
+			"bool": boolQuery,
+		}
+	} else {
+		innerQuery = map[string]interface{}{
+			"match_all": map[string]interface{}{},
+		}
+	}
+
+	query := map[string]interface{}{
+		"size": limit,
+		"query": map[string]interface{}{
+			"function_score": map[string]interface{}{
+				"query": innerQuery,
+				"functions": []interface{}{
+					map[string]interface{}{
+						"random_score": map[string]interface{}{
+							"seed":  seed,
+							"field": "_seq_no",
+						},
+					},
+				},
+				"boost_mode": "replace",
+			},
+		},
+	}
+
+	body, err := json.Marshal(query)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("%s/%s/_search", c.cfg.Endpoint, c.cfg.Index)
+	resp, err := c.doRequest(ctx, "POST", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("random papers search: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("random papers search failed (%d): %s", resp.StatusCode, string(respBody[:min(500, len(respBody))]))
+	}
+
+	var esResp struct {
+		Hits struct {
+			Hits []struct {
+				Source PaperDoc `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(respBody, &esResp); err != nil {
+		return nil, err
+	}
+
+	var papers []*PaperDoc
+	for _, hit := range esResp.Hits.Hits {
+		doc := hit.Source
+		papers = append(papers, &doc)
+	}
+
+	return papers, nil
+}
+
 // GetDocCount returns the total number of documents in the index.
 func (c *Client) GetDocCount(ctx context.Context) (int64, error) {
 	url := fmt.Sprintf("%s/%s/_count", c.cfg.Endpoint, c.cfg.Index)

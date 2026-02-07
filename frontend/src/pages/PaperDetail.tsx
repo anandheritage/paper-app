@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calendar, Users, ExternalLink, BookOpen, Bookmark, BookmarkCheck, Plus, Check, ArrowLeft, FileText, Tag, Quote, Award, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -43,9 +44,23 @@ export default function PaperDetail() {
     enabled: isAuthenticated,
   });
 
-  const userPaper = libraryData?.papers?.find((up) => up.paper_id === id);
+  // Match by paper_id (PG UUID) OR paper.external_id (for papers opened from search with corpusid)
+  const userPaper = libraryData?.papers?.find(
+    (up) => up.paper_id === id || up.paper?.external_id === id || up.paper?.id === id
+  );
   const isSaved = !!userPaper;
   const isBookmarked = userPaper?.is_bookmarked ?? false;
+
+  // Auto-set status to "reading" when a saved paper is viewed
+  const hasAutoMarkedRef = useRef(false);
+  useEffect(() => {
+    if (userPaper && userPaper.status === 'saved' && !hasAutoMarkedRef.current) {
+      hasAutoMarkedRef.current = true;
+      libraryApi.updatePaper(userPaper.paper_id, { status: 'reading' })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['library'] }))
+        .catch(() => {}); // silently fail
+    }
+  }, [userPaper?.paper_id, userPaper?.status, queryClient]);
 
   const saveMutation = useMutation({
     mutationFn: libraryApi.savePaper,
@@ -343,6 +358,26 @@ export default function PaperDetail() {
                   <Plus className="h-4 w-4" />
                   Save to Library
                 </button>
+              )}
+
+              {userPaper && (
+                <select
+                  value={userPaper.status}
+                  onChange={(e) => {
+                    libraryApi.updatePaper(userPaper.paper_id, { status: e.target.value })
+                      .then(() => {
+                        toast.success('Status updated');
+                        queryClient.invalidateQueries({ queryKey: ['library'] });
+                      })
+                      .catch(() => toast.error('Failed to update status'));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="px-3 py-2.5 rounded-xl border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-900 text-surface-700 dark:text-surface-300 text-sm font-medium transition-colors cursor-pointer"
+                >
+                  <option value="saved">Saved</option>
+                  <option value="reading">Reading</option>
+                  <option value="finished">Finished</option>
+                </select>
               )}
 
               <button

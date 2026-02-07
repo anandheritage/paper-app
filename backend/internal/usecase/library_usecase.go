@@ -2,11 +2,14 @@ package usecase
 
 import (
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/paper-app/backend/internal/domain"
 )
+
+const MaxReadingPapers = 10
 
 var (
 	ErrPaperNotFound     = errors.New("paper not found")
@@ -151,6 +154,13 @@ func (u *LibraryUsecase) UpdatePaper(userID, paperID uuid.UUID, input *UpdatePap
 		return nil, err
 	}
 
+	// Enforce max reading limit when a paper is set to "reading"
+	if input.Status != nil && *input.Status == domain.StatusReading {
+		if err := u.userPaperRepo.EnforceReadingLimit(userID, MaxReadingPapers); err != nil {
+			log.Printf("Failed to enforce reading limit for user %s: %v", userID, err)
+		}
+	}
+
 	return userPaper, nil
 }
 
@@ -203,4 +213,12 @@ func (u *LibraryUsecase) UnbookmarkPaper(userID, paperID uuid.UUID) error {
 
 	userPaper.IsBookmarked = false
 	return u.userPaperRepo.Update(userPaper)
+}
+
+func (u *LibraryUsecase) GetUserCategories(userID uuid.UUID) ([]string, error) {
+	return u.userPaperRepo.GetUserCategories(userID)
+}
+
+func (u *LibraryUsecase) GetUserPaperExternalIDs(userID uuid.UUID) ([]string, error) {
+	return u.userPaperRepo.GetUserPaperExternalIDs(userID)
 }

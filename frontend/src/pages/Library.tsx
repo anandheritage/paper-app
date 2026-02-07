@@ -65,6 +65,16 @@ export default function Library() {
     onError: () => toast.error('Failed to unbookmark'),
   });
 
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ paperId, status }: { paperId: string; status: string }) =>
+      libraryApi.updatePaper(paperId, { status }),
+    onSuccess: () => {
+      toast.success('Status updated');
+      queryClient.invalidateQueries({ queryKey: ['library'] });
+    },
+    onError: () => toast.error('Failed to update status'),
+  });
+
   // Not signed in
   if (!isAuthenticated) {
     return (
@@ -176,13 +186,27 @@ export default function Library() {
                   </div>
                 )}
                 <div className="absolute top-3 right-16">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-md ${
-                    up.status === 'reading' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300' :
-                    up.status === 'finished' ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300' :
-                    'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400'
-                  }`}>
-                    {up.status}
-                  </span>
+                  <select
+                    value={up.status}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      updateStatusMutation.mutate({ paperId: up.paper_id, status: e.target.value });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`text-xs font-medium px-2 py-0.5 rounded-md border-none cursor-pointer appearance-none pr-5 bg-no-repeat bg-right ${
+                      up.status === 'reading' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300' :
+                      up.status === 'finished' ? 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300' :
+                      'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400'
+                    }`}
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                      backgroundPosition: 'right 4px center',
+                    }}
+                  >
+                    <option value="saved">Saved</option>
+                    <option value="reading">Reading</option>
+                    <option value="finished">Finished</option>
+                  </select>
                 </div>
                 <button
                   onClick={(e) => {
