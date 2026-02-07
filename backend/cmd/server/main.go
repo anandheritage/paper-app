@@ -98,7 +98,7 @@ func main() {
 	libraryUsecase := usecase.NewLibraryUsecase(userPaperRepo, paperRepo)
 
 	// Initialize HTTP handler and middleware
-	handler := delivery.NewHandler(authUsecase, paperUsecase, libraryUsecase)
+	handler := delivery.NewHandler(authUsecase, paperUsecase, libraryUsecase, userRepo)
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
 
 	// Create router

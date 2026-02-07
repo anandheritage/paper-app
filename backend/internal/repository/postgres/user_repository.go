@@ -19,6 +19,30 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db}
 }
 
+const userColumns = `id, email, password_hash, name, auth_provider, provider_id, COALESCE(is_admin, false), created_at, updated_at`
+
+func scanUser(row pgx.Row) (*domain.User, error) {
+	user := &domain.User{}
+	err := row.Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Name,
+		&user.AuthProvider,
+		&user.ProviderID,
+		&user.IsAdmin,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (r *UserRepository) Create(user *domain.User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -56,87 +80,24 @@ func (r *UserRepository) GetByID(id uuid.UUID) (*domain.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `
-		SELECT id, email, password_hash, name, auth_provider, provider_id, created_at, updated_at
-		FROM users WHERE id = $1
-	`
-
-	user := &domain.User{}
-	err := r.db.QueryRow(ctx, query, id).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.AuthProvider,
-		&user.ProviderID,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+	query := `SELECT ` + userColumns + ` FROM users WHERE id = $1`
+	return scanUser(r.db.QueryRow(ctx, query, id))
 }
 
 func (r *UserRepository) GetByEmail(email string) (*domain.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `
-		SELECT id, email, password_hash, name, auth_provider, provider_id, created_at, updated_at
-		FROM users WHERE email = $1
-	`
-
-	user := &domain.User{}
-	err := r.db.QueryRow(ctx, query, email).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.AuthProvider,
-		&user.ProviderID,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+	query := `SELECT ` + userColumns + ` FROM users WHERE email = $1`
+	return scanUser(r.db.QueryRow(ctx, query, email))
 }
 
 func (r *UserRepository) GetByProviderID(provider, providerID string) (*domain.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `
-		SELECT id, email, password_hash, name, auth_provider, provider_id, created_at, updated_at
-		FROM users WHERE auth_provider = $1 AND provider_id = $2
-	`
-
-	user := &domain.User{}
-	err := r.db.QueryRow(ctx, query, provider, providerID).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.Name,
-		&user.AuthProvider,
-		&user.ProviderID,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+	query := `SELECT ` + userColumns + ` FROM users WHERE auth_provider = $1 AND provider_id = $2`
+	return scanUser(r.db.QueryRow(ctx, query, provider, providerID))
 }
 
 func (r *UserRepository) Update(user *domain.User) error {
@@ -160,4 +121,50 @@ func (r *UserRepository) Delete(id uuid.UUID) error {
 	query := `DELETE FROM users WHERE id = $1`
 	_, err := r.db.Exec(ctx, query, id)
 	return err
+}
+
+func (r *UserRepository) ListAll(limit, offset int) ([]*domain.User, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	// Get total count
+	var total int
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := `SELECT ` + userColumns + ` FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	rows, err := r.db.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []*domain.User
+	for rows.Next() {
+		user := &domain.User{}
+		if err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.PasswordHash,
+			&user.Name,
+			&user.AuthProvider,
+			&user.ProviderID,
+			&user.IsAdmin,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		users = append(users, user)
+	}
+
+	return users, total, nil
 }

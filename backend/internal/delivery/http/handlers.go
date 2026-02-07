@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/paper-app/backend/internal/domain"
 	"github.com/paper-app/backend/internal/middleware"
 	"github.com/paper-app/backend/internal/usecase"
 )
@@ -16,13 +17,15 @@ type Handler struct {
 	authUsecase    *usecase.AuthUsecase
 	paperUsecase   *usecase.PaperUsecase
 	libraryUsecase *usecase.LibraryUsecase
+	userRepo       domain.UserRepository
 }
 
-func NewHandler(auth *usecase.AuthUsecase, paper *usecase.PaperUsecase, library *usecase.LibraryUsecase) *Handler {
+func NewHandler(auth *usecase.AuthUsecase, paper *usecase.PaperUsecase, library *usecase.LibraryUsecase, userRepo domain.UserRepository) *Handler {
 	return &Handler{
 		authUsecase:    auth,
 		paperUsecase:   paper,
 		libraryUsecase: library,
+		userRepo:       userRepo,
 	}
 }
 
@@ -483,4 +486,67 @@ func (h *Handler) GetDiscover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+// Admin handlers
+
+type adminUserResponse struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	Name         string `json:"name"`
+	AuthProvider string `json:"auth_provider"`
+	IsAdmin      bool   `json:"is_admin"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
+func toAdminUser(u *domain.User) adminUserResponse {
+	return adminUserResponse{
+		ID:           u.ID.String(),
+		Email:        u.Email,
+		Name:         u.Name,
+		AuthProvider: u.AuthProvider,
+		IsAdmin:      u.IsAdmin,
+		CreatedAt:    u.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    u.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func (h *Handler) AdminListUsers(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if limit == 0 {
+		limit = 50
+	}
+
+	users, total, err := h.userRepo.ListAll(limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list users")
+		return
+	}
+
+	var resp []adminUserResponse
+	for _, u := range users {
+		resp = append(resp, toAdminUser(u))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"users":  resp,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+func (h *Handler) AdminGetStats(w http.ResponseWriter, r *http.Request) {
+	_, total, err := h.userRepo.ListAll(1, 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get stats")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"total_users": total,
+	})
 }

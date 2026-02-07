@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -43,6 +44,28 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// AdminOnly middleware must be used after Authenticate. It checks that the
+// authenticated user has the is_admin flag set.
+func (m *AuthMiddleware) AdminOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserID(r.Context())
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		user, err := m.authUsecase.GetUserByID(userID)
+		if err != nil || user == nil || !user.IsAdmin {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Admin access required"})
+			return
+		}
+
+		next.ServeHTTP(w, r)
 	})
 }
 

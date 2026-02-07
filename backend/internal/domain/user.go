@@ -13,6 +13,7 @@ type User struct {
 	Name         string    `json:"name,omitempty"`
 	AuthProvider string    `json:"auth_provider"`
 	ProviderID   string    `json:"provider_id,omitempty"`
+	IsAdmin      bool      `json:"is_admin"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -24,4 +25,5 @@ type UserRepository interface {
 	GetByProviderID(provider, providerID string) (*User, error)
 	Update(user *User) error
 	Delete(id uuid.UUID) error
+	ListAll(limit, offset int) ([]*User, int, error)
 }

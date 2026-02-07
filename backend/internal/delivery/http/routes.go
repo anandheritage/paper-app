@@ -77,6 +77,13 @@ func NewRouter(handler *Handler, authMiddleware *middleware.AuthMiddleware, allo
 
 			// Discover route
 			r.Get("/discover", handler.GetDiscover)
+
+			// Admin routes (requires auth + admin role)
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(authMiddleware.AdminOnly)
+				r.Get("/users", handler.AdminListUsers)
+				r.Get("/stats", handler.AdminGetStats)
+			})
 		})
 	})
 
