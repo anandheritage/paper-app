@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -28,6 +28,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+// After login, redirect to the intended page or home
+function LoginRedirect() {
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/';
+  return <Navigate to={redirect} replace />;
 }
 
 function LoadingScreen() {
@@ -71,10 +78,10 @@ export default function App() {
         <Route path="/" element={<Landing />} />
       )}
 
-      {/* Auth pages — redirect to home if already logged in */}
+      {/* Auth pages — redirect to intended page (or home) if already logged in */}
       <Route
         path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
+        element={isAuthenticated ? <LoginRedirect /> : <Login />}
       />
       {/* /register redirects to the unified login page */}
       <Route path="/register" element={<Navigate to="/login" replace />} />
