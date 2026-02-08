@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, ArrowRight, BookOpen, Bookmark, Archive } from 'lucide-react';
+import { Search, ArrowRight, BookOpen, Bookmark } from 'lucide-react';
 import { libraryApi } from '../api/library';
 import { useAuthStore } from '../stores/authStore';
 import PaperCard from '../components/PaperCard';
@@ -25,18 +25,11 @@ export default function Dashboard() {
     enabled: isAuthenticated,
   });
 
-  const { data: savedPapers, isLoading: loadingSaved } = useQuery({
-    queryKey: ['library', 'saved'],
-    queryFn: () => libraryApi.getLibrary('saved', 5, 0),
-    enabled: isAuthenticated,
-  });
-
   // Redirect to Discover if user has no activity at all
-  const allLoaded = !loadingRecent && !loadingBookmarks && !loadingSaved;
+  const allLoaded = !loadingRecent && !loadingBookmarks;
   const hasNoActivity = allLoaded &&
     (recentPapers?.total ?? 0) === 0 &&
-    (bookmarks?.total ?? 0) === 0 &&
-    (savedPapers?.total ?? 0) === 0;
+    (bookmarks?.total ?? 0) === 0;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +85,7 @@ export default function Dashboard() {
 
       {/* Stats - only show when authenticated */}
       {isAuthenticated && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
           <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-800 p-4 flex items-center gap-4">
             <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
               <BookOpen className="h-6 w-6" />
@@ -109,15 +102,6 @@ export default function Dashboard() {
             <div>
               <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{bookmarks?.total ?? 0}</p>
               <p className="text-sm text-surface-500">Bookmarked</p>
-            </div>
-          </div>
-          <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-800 p-4 flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400">
-              <Archive className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{savedPapers?.total ?? 0}</p>
-              <p className="text-sm text-surface-500">Saved</p>
             </div>
           </div>
         </div>
@@ -215,25 +199,6 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Recently Saved - only show when authenticated */}
-      {isAuthenticated && !loadingSaved && savedPapers?.papers?.length ? (
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Recently Saved</h2>
-            <button
-              onClick={() => navigate('/library')}
-              className="flex items-center gap-1 text-sm text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              View all <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="space-y-3">
-            {savedPapers.papers.slice(0, 3).map((up) => (
-              <PaperCard key={up.id} paper={up.paper} compact />
-            ))}
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

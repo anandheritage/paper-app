@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Library as LibraryIcon, BookOpen, Clock, CheckCircle, Bookmark, Trash2, LogIn } from 'lucide-react';
+import { Library as LibraryIcon, BookOpen, CheckCircle, Bookmark, Trash2, LogIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { libraryApi } from '../api/library';
 import { useAuthStore } from '../stores/authStore';
@@ -11,7 +11,6 @@ import { ListSkeleton } from '../components/Skeleton';
 const STATUS_TABS = [
   { value: '', label: 'All', icon: LibraryIcon },
   { value: 'reading', label: 'Reading', icon: BookOpen },
-  { value: 'saved', label: 'Saved', icon: Clock },
   { value: 'finished', label: 'Finished', icon: CheckCircle },
 ];
 
@@ -200,7 +199,6 @@ export default function Library() {
                       'bg-surface-100 text-surface-600 border-surface-200 dark:bg-surface-800 dark:text-surface-400 dark:border-surface-700'
                     }`}
                   >
-                    <option value="saved">Saved</option>
                     <option value="reading">Reading</option>
                     <option value="finished">Finished</option>
                   </select>
