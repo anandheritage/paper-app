@@ -19,7 +19,7 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-const userColumns = `id, email, password_hash, name, auth_provider, provider_id, COALESCE(is_admin, false), created_at, updated_at`
+const userColumns = `id, email, password_hash, name, auth_provider, provider_id, COALESCE(is_admin, false), last_login_at, created_at, updated_at`
 
 func scanUser(row pgx.Row) (*domain.User, error) {
 	user := &domain.User{}
@@ -31,6 +31,7 @@ func scanUser(row pgx.Row) (*domain.User, error) {
 		&user.AuthProvider,
 		&user.ProviderID,
 		&user.IsAdmin,
+		&user.LastLoginAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -158,6 +159,7 @@ func (r *UserRepository) ListAll(limit, offset int) ([]*domain.User, int, error)
 			&user.AuthProvider,
 			&user.ProviderID,
 			&user.IsAdmin,
+			&user.LastLoginAt,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		); err != nil {
@@ -167,4 +169,13 @@ func (r *UserRepository) ListAll(limit, offset int) ([]*domain.User, int, error)
 	}
 
 	return users, total, nil
+}
+
+func (r *UserRepository) UpdateLastLogin(id uuid.UUID) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `UPDATE users SET last_login_at = NOW() WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, id)
+	return err
 }

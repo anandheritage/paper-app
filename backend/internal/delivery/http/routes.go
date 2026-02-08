@@ -82,7 +82,9 @@ func NewRouter(handler *Handler, authMiddleware *middleware.AuthMiddleware, allo
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(authMiddleware.AdminOnly)
 				r.Get("/users", handler.AdminListUsers)
+				r.Get("/users/{userId}/activity", handler.AdminGetUserActivity)
 				r.Get("/stats", handler.AdminGetStats)
+				r.Get("/activity", handler.AdminGetActivity)
 			})
 		})
 	})

@@ -127,7 +127,18 @@ func main() {
 	perPage := flag.Int("per-page", 200, "Results per API page (max 200)")
 	mailto := flag.String("mailto", envOrDefault("OPENALEX_MAILTO", "admin@dapapers.com"), "Email for OpenAlex polite pool (faster rate limits)")
 	startCursor := flag.String("cursor", "*", "Starting cursor (use * for beginning, or paste a cursor to resume)")
+	checkpointFile := flag.String("checkpoint", "/tmp/oaimport_checkpoint.json", "File to save progress for resume")
+	maxDocs := flag.Int("max-docs", 0, "Stop after indexing this many docs (0 = unlimited)")
 	flag.Parse()
+
+	// Try to resume from checkpoint if cursor is default
+	if *startCursor == "*" {
+		if cp, err := loadCheckpoint(*checkpointFile); err == nil {
+			log.Printf("🔄 Resuming from checkpoint: page=%d, indexed=%d, cursor=%s",
+				cp.Page, cp.TotalIndexed, truncate(cp.Cursor, 30))
+			*startCursor = cp.Cursor
+		}
+	}
 
 	if *osEndpoint == "" {
 		log.Fatal("OPENSEARCH_ENDPOINT is required")
@@ -319,6 +330,22 @@ func main() {
 			}
 		}
 
+		// Save checkpoint after every page so we can resume
+		if resp.Meta.NextCursor != nil && *resp.Meta.NextCursor != "" {
+			saveCheckpoint(*checkpointFile, &checkpoint{
+				Cursor:       *resp.Meta.NextCursor,
+				TotalIndexed: totalIndexed,
+				TotalErrors:  totalErrors,
+				Page:         totalPages,
+			})
+		}
+
+		// Check if we've hit the doc limit
+		if *maxDocs > 0 && totalIndexed >= *maxDocs {
+			log.Printf("Reached max-docs limit (%d). Stopping import.", *maxDocs)
+			break
+		}
+
 		// Next page
 		if resp.Meta.NextCursor == nil || *resp.Meta.NextCursor == "" || len(resp.Results) == 0 {
 			log.Println("No more results — import complete!")
@@ -388,6 +415,11 @@ func fetchPage(client *http.Client, url string) (oaResponse, error) {
 
 func convertOAWork(w *oaWork) *opensearch.PaperDoc {
 	if w.Title == "" {
+		return nil
+	}
+
+	// Skip papers with fewer than 5 citations
+	if w.CitedByCount < 5 {
 		return nil
 	}
 
@@ -546,6 +578,43 @@ func reconstructAbstract(invertedIndex map[string][]int) string {
 	}
 
 	return strings.Join(words, " ")
+}
+
+// ---------- Checkpoint ----------
+
+type checkpoint struct {
+	Cursor       string    `json:"cursor"`
+	TotalIndexed int       `json:"total_indexed"`
+	TotalErrors  int       `json:"total_errors"`
+	Page         int       `json:"page"`
+	Timestamp    time.Time `json:"timestamp"`
+}
+
+func loadCheckpoint(path string) (*checkpoint, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cp checkpoint
+	if err := json.Unmarshal(data, &cp); err != nil {
+		return nil, err
+	}
+	if cp.Cursor == "" || cp.Cursor == "*" {
+		return nil, fmt.Errorf("no valid cursor in checkpoint")
+	}
+	return &cp, nil
+}
+
+func saveCheckpoint(path string, cp *checkpoint) {
+	cp.Timestamp = time.Now()
+	data, err := json.MarshalIndent(cp, "", "  ")
+	if err != nil {
+		log.Printf("WARNING: Could not marshal checkpoint: %v", err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		log.Printf("WARNING: Could not save checkpoint to %s: %v", path, err)
+	}
 }
 
 // ---------- Helpers ----------

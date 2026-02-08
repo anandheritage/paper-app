@@ -1,4 +1,5 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Search, BookOpen, Library, Home, LogOut, LogIn, Moon, Sun, Sparkles, Shield } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -8,6 +9,19 @@ export default function Layout() {
   const { user, tokens, isAuthenticated, logout } = useAuthStore();
   const { isDark, toggle } = useThemeStore();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
+    }
+  };
+
+  // Don't show header search bar on the Search page (it has its own)
+  const showHeaderSearch = location.pathname !== '/search';
 
   const handleLogout = async () => {
     if (tokens?.refresh_token) {
@@ -61,6 +75,22 @@ export default function Layout() {
                 </NavLink>
               ))}
             </nav>
+
+            {/* Header Search Bar */}
+            {showHeaderSearch && (
+              <form onSubmit={handleSearch} className="hidden sm:flex items-center flex-1 max-w-md mx-4">
+                <div className="relative w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search papers..."
+                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 transition-all"
+                  />
+                </div>
+              </form>
+            )}
 
             {/* Right side */}
             <div className="flex items-center gap-3">

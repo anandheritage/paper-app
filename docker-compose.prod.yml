@@ -55,6 +55,7 @@ services:
       - ./backend/migrations/002_add_citation_count.sql:/docker-entrypoint-initdb.d/002_add_citation_count.sql:ro
       - ./backend/migrations/003_optimize_bulk_ingest.sql:/docker-entrypoint-initdb.d/003_optimize_bulk_ingest.sql:ro
       - ./backend/migrations/004_enrich_metadata.sql:/docker-entrypoint-initdb.d/004_enrich_metadata.sql:ro
+      - ./backend/migrations/007_add_login_events.sql:/docker-entrypoint-initdb.d/007_add_login_events.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-paper} -d ${POSTGRES_DB:-paper}"]
       interval: 5s
@@ -86,6 +87,7 @@ services:
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
+      - path.repo=/usr/share/opensearch/snapshots
     ulimits:
       memlock:
         soft: -1
@@ -95,6 +97,7 @@ services:
         hard: 65536
     volumes:
       - osdata:/usr/share/opensearch/data
+      - ossnapshots:/usr/share/opensearch/snapshots
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -125,6 +128,8 @@ volumes:
   pgdata:
     driver: local
   osdata:
+    driver: local
+  ossnapshots:
     driver: local
   caddy_data:
     driver: local

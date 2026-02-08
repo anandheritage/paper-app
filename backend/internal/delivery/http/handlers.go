@@ -18,15 +18,42 @@ type Handler struct {
 	paperUsecase   *usecase.PaperUsecase
 	libraryUsecase *usecase.LibraryUsecase
 	userRepo       domain.UserRepository
+	loginEventRepo domain.LoginEventRepository
 }
 
-func NewHandler(auth *usecase.AuthUsecase, paper *usecase.PaperUsecase, library *usecase.LibraryUsecase, userRepo domain.UserRepository) *Handler {
+func NewHandler(auth *usecase.AuthUsecase, paper *usecase.PaperUsecase, library *usecase.LibraryUsecase, userRepo domain.UserRepository, loginEventRepo domain.LoginEventRepository) *Handler {
 	return &Handler{
 		authUsecase:    auth,
 		paperUsecase:   paper,
 		libraryUsecase: library,
 		userRepo:       userRepo,
+		loginEventRepo: loginEventRepo,
 	}
+}
+
+// recordLogin records a login event asynchronously (fire-and-forget)
+func (h *Handler) recordLogin(userID uuid.UUID, method string, r *http.Request) {
+	go func() {
+		ip := r.Header.Get("X-Forwarded-For")
+		if ip == "" {
+			ip = r.Header.Get("X-Real-IP")
+		}
+		if ip == "" {
+			ip = r.RemoteAddr
+		}
+		event := &domain.LoginEvent{
+			UserID:     userID,
+			AuthMethod: method,
+			IPAddress:  ip,
+			UserAgent:  r.UserAgent(),
+		}
+		if h.loginEventRepo != nil {
+			_ = h.loginEventRepo.Create(event)
+		}
+		if h.userRepo != nil {
+			_ = h.userRepo.UpdateLastLogin(userID)
+		}
+	}()
 }
 
 type errorResponse struct {
@@ -78,6 +105,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordLogin(user.ID, "email_register", r)
 	writeJSON(w, http.StatusCreated, authResponse{User: user, Tokens: tokens})
 }
 
@@ -103,6 +131,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordLogin(user.ID, "email", r)
 	writeJSON(w, http.StatusOK, authResponse{User: user, Tokens: tokens})
 }
 
@@ -133,6 +162,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.recordLogin(user.ID, "google", r)
 	writeJSON(w, http.StatusOK, authResponse{User: user, Tokens: tokens})
 }
 
@@ -491,17 +521,18 @@ func (h *Handler) GetDiscover(w http.ResponseWriter, r *http.Request) {
 // Admin handlers
 
 type adminUserResponse struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	AuthProvider string `json:"auth_provider"`
-	IsAdmin      bool   `json:"is_admin"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	ID           string  `json:"id"`
+	Email        string  `json:"email"`
+	Name         string  `json:"name"`
+	AuthProvider string  `json:"auth_provider"`
+	IsAdmin      bool    `json:"is_admin"`
+	LastLoginAt  *string `json:"last_login_at,omitempty"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func toAdminUser(u *domain.User) adminUserResponse {
-	return adminUserResponse{
+	resp := adminUserResponse{
 		ID:           u.ID.String(),
 		Email:        u.Email,
 		Name:         u.Name,
@@ -510,6 +541,11 @@ func toAdminUser(u *domain.User) adminUserResponse {
 		CreatedAt:    u.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:    u.UpdatedAt.Format(time.RFC3339),
 	}
+	if u.LastLoginAt != nil {
+		t := u.LastLoginAt.Format(time.RFC3339)
+		resp.LastLoginAt = &t
+	}
+	return resp
 }
 
 func (h *Handler) AdminListUsers(w http.ResponseWriter, r *http.Request) {
@@ -546,7 +582,92 @@ func (h *Handler) AdminGetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stats := &domain.AdminStats{
+		TotalUsers:     total,
+		LoginsByMethod: make(map[string]int),
+	}
+
+	if h.loginEventRepo != nil {
+		now := time.Now()
+		todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		weekStart := todayStart.AddDate(0, 0, -7)
+		monthStart := todayStart.AddDate(0, -1, 0)
+
+		if n, err := h.loginEventRepo.ActiveUsers(todayStart); err == nil {
+			stats.ActiveToday = n
+		}
+		if n, err := h.loginEventRepo.ActiveUsers(weekStart); err == nil {
+			stats.ActiveThisWeek = n
+		}
+		if n, err := h.loginEventRepo.ActiveUsers(monthStart); err == nil {
+			stats.ActiveThisMonth = n
+		}
+		if m, err := h.loginEventRepo.CountByMethod(monthStart); err == nil {
+			stats.LoginsByMethod = m
+			for _, c := range m {
+				stats.TotalLogins += c
+			}
+		}
+		if daily, err := h.loginEventRepo.DailyLoginCounts(30); err == nil {
+			stats.DailyLogins = daily
+		}
+	}
+
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (h *Handler) AdminGetActivity(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if limit == 0 {
+		limit = 50
+	}
+
+	if h.loginEventRepo == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"events": []interface{}{}, "total": 0})
+		return
+	}
+
+	events, total, err := h.loginEventRepo.ListRecent(limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get activity")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"total_users": total,
+		"events": events,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
+}
+
+func (h *Handler) AdminGetUserActivity(w http.ResponseWriter, r *http.Request) {
+	userIDStr := chi.URLParam(r, "userId")
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid user ID")
+		return
+	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit == 0 {
+		limit = 20
+	}
+
+	if h.loginEventRepo == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"events": []interface{}{}})
+		return
+	}
+
+	events, err := h.loginEventRepo.ListByUser(userID, limit, 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get user activity")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"events": events,
 	})
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ArrowRight, BookOpen, Bookmark, Archive } from 'lucide-react';
 import { libraryApi } from '../api/library';
@@ -31,6 +31,13 @@ export default function Dashboard() {
     enabled: isAuthenticated,
   });
 
+  // Redirect to Discover if user has no activity at all
+  const allLoaded = !loadingRecent && !loadingBookmarks && !loadingSaved;
+  const hasNoActivity = allLoaded &&
+    (recentPapers?.total ?? 0) === 0 &&
+    (bookmarks?.total ?? 0) === 0 &&
+    (savedPapers?.total ?? 0) === 0;
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
@@ -44,6 +51,10 @@ export default function Dashboard() {
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   };
+
+  if (isAuthenticated && hasNoActivity) {
+    return <Navigate to="/discover" replace />;
+  }
 
   return (
     <div className="space-y-8">

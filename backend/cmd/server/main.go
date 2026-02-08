@@ -69,6 +69,7 @@ func main() {
 	paperRepo := postgres.NewPaperRepository(pool)
 	userPaperRepo := postgres.NewUserPaperRepository(pool)
 	tokenRepo := postgres.NewRefreshTokenRepository(pool)
+	loginEventRepo := postgres.NewLoginEventRepository(pool)
 
 	// Initialize OpenSearch client (optional)
 	var osClient *opensearch.Client
@@ -98,7 +99,7 @@ func main() {
 	libraryUsecase := usecase.NewLibraryUsecase(userPaperRepo, paperRepo)
 
 	// Initialize HTTP handler and middleware
-	handler := delivery.NewHandler(authUsecase, paperUsecase, libraryUsecase, userRepo)
+	handler := delivery.NewHandler(authUsecase, paperUsecase, libraryUsecase, userRepo, loginEventRepo)
 	authMiddleware := middleware.NewAuthMiddleware(authUsecase)
 
 	// Create router
