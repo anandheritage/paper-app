@@ -320,6 +320,33 @@ export default function Dashboard() {
         </section>
       )}
 
+      {/* Recent Bookmarks */}
+      {isAuthenticated && (bookmarks?.papers?.length ?? 0) > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+              <Bookmark className="h-5 w-5 text-primary-500" />
+              Recent Bookmarks
+            </h2>
+            <button
+              onClick={() => navigate('/library?tab=bookmarks')}
+              className="flex items-center gap-1 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              View all <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+          {loadingBookmarks ? (
+            <ListSkeleton count={2} />
+          ) : (
+            <div className="space-y-3">
+              {bookmarks!.papers.slice(0, 3).map((up) => (
+                <PaperCard key={up.id} paper={up.paper} compact isBookmarked />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* ── Discover Section ── */}
 
       {/* Trending Paper of the Day */}
@@ -408,33 +435,6 @@ export default function Dashboard() {
               <PaperCard key={p.id} paper={p} onBookmark={handleBookmark} />
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Recent Bookmarks */}
-      {isAuthenticated && (bookmarks?.papers?.length ?? 0) > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
-              <Bookmark className="h-5 w-5 text-primary-500" />
-              Recent Bookmarks
-            </h2>
-            <button
-              onClick={() => navigate('/library?tab=bookmarks')}
-              className="flex items-center gap-1 text-sm text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              View all <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-          {loadingBookmarks ? (
-            <ListSkeleton count={2} />
-          ) : (
-            <div className="space-y-3">
-              {bookmarks!.papers.slice(0, 3).map((up) => (
-                <PaperCard key={up.id} paper={up.paper} compact isBookmarked />
-              ))}
-            </div>
-          )}
         </section>
       )}
 
